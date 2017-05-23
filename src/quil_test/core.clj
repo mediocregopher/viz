@@ -2,28 +2,38 @@
   (:require [quil.core :as q]
             [quil.middleware :as m]
             [quil-test.forest :as forest]
+            [quil-test.grid :as grid]
             [quil-test.ghost :as ghost]
             ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn setup []
-  ; Set frame rate to 30 frames per second.
-  (q/frame-rate 30)
-  {:ghost (-> (ghost/new-ghost [0 0])
-              (ghost/incr)
-              (ghost/incr)
-              (ghost/incr)
-              (ghost/incr)
-              )
-   })
+  (q/frame-rate 15)
+  (let [ghost (ghost/incr (ghost/new-ghost grid/isometric [0 0]))]
+    {:ghost ghost
+     }))
 
-(defn update-state [state] state)
+(def scale 5) ;; TODO make part of state?
 
-;(defn update-state [state]
-;  ; Update sketch state by changing circle color and position.
-;  {:color (mod (+ (:color state) 0.7) 255)
-;   :angle (+ (:angle state) 0.1)})
+; each bound is a position vector
+(defn- in-bounds? [min-bound max-bound pos]
+  (let [pos-k (keep-indexed #(let [mini (min-bound %1)
+                                   maxi (max-bound %1)]
+                               (when (and (>= %2 mini) (<= %2 maxi)) %2)) pos)]
+    (= (count pos) (count pos-k))))
+
+(defn- quil-bounds [scale buffer]
+  (let [w (/ (- (/ (q/width) 2) buffer) scale)
+        h (/ (- (/ (q/height) 2) buffer) scale)
+        ]
+    [[(- w) (- h)] [w h]]))
+
+(defn update-state [state]
+  (assoc state :ghost
+         (ghost/filter-active-nodes (ghost/incr (:ghost state))
+                                    #(let [[minb maxb] (quil-bounds scale (* 2.5 scale))]
+                                       (in-bounds? minb maxb (:pos %1))))))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
@@ -33,8 +43,9 @@
 
   (q/with-translation [(/ (q/width) 2)
                        (/ (q/height) 2)]
-    (doseq [line (forest/lines (get-in state [:ghost :forest]))]
-      (apply q/line (map #(* 50 %1) line))))
+    (let [ghost (if (:incr state) (:ghost-incr state) (:ghost state))]
+      (doseq [line (forest/lines (:forest ghost))]
+        (apply q/line (map #(* scale %1) line)))))
 
   ; Calculate x and y coordinates of the circle.
   ; (let [angle (:angle state)
@@ -55,7 +66,7 @@
     ; setup function called only once, during sketch initialization.
     :setup setup
     ; update-state is called on each iteration before draw-state.
-    ; :update update-state
+    :update update-state
     :draw draw-state
     :features [:keep-on-top]
     ; This sketch uses functional-mode middleware.

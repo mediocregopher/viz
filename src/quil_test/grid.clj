@@ -2,9 +2,13 @@
 
 ;; grid     set of points relative to a common origin
 
-(def euclidean [      [0 1]
-                [-1 0]  ,   [1 0]
-                      [0 -1]     ])
+(def euclidean [       [0 -1]
+                [-1 0]   ,    [1 0]
+                       [0 1]       ])
+
+(def isometric [[-1 -1] [0 -2] [1 -1]
+                          ,
+                [-1 1]  [0 2]  [1 1]])
 
 (defn new-grid [grid-def]
   { :grid-def grid-def
@@ -48,3 +52,8 @@
 
 (defn empty-adjacent-points [grid point]
   (remove (:points grid) (adjacent-points grid point)))
+
+(-> (new-grid isometric)
+    (add-point [0 0])
+    (add-point [0 1])
+    (empty-adjacent-points [0 1]))
