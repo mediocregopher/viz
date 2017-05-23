@@ -4,15 +4,19 @@
             [quil-test.forest :as forest]
             [quil-test.grid :as grid]
             [quil-test.ghost :as ghost]
+            [gil.core :as gil]
             ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn setup []
-  (q/frame-rate 15)
-  (let [ghost (ghost/incr (ghost/new-ghost grid/isometric [0 0]))]
-    {:ghost ghost
-     }))
+  (let [state { :frame-rate 15
+                :exit-wait-frames 15
+                :frame 0
+                :ghost (ghost/new-ghost grid/euclidean [0 0])
+                }]
+    (q/frame-rate (:frame-rate state))
+    state))
 
 (def scale 5) ;; TODO make part of state?
 
@@ -29,11 +33,23 @@
         ]
     [[(- w) (- h)] [w h]]))
 
-(defn update-state [state]
+(defn- incr-ghost [state]
   (assoc state :ghost
          (ghost/filter-active-nodes (ghost/incr (:ghost state))
                                     #(let [[minb maxb] (quil-bounds scale (* 2.5 scale))]
                                        (in-bounds? minb maxb (:pos %1))))))
+
+(defn- maybe-exit [state]
+  (if (empty? (get-in state [:ghost :active-node-ids]))
+    (if (zero? (:exit-wait-frames state)) (do (q/exit) state)
+      (update-in state [:exit-wait-frames] dec))
+    state))
+
+(defn update-state [state]
+  (-> state
+      (update-in [:frame] inc)
+      (incr-ghost)
+      (maybe-exit)))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
@@ -47,16 +63,7 @@
       (doseq [line (forest/lines (:forest ghost))]
         (apply q/line (map #(* scale %1) line)))))
 
-  ; Calculate x and y coordinates of the circle.
-  ; (let [angle (:angle state)
-  ;       x (* 150 (q/cos angle))
-  ;       y (* 150 (q/sin angle))]
-  ;   ; Move origin point to the center of the sketch.
-  ;   (q/with-translation [(/ (q/width) 2)
-  ;                        (/ (q/height) 2)]
-  ;     ; Draw the circle.
-  ;     (q/ellipse x y 100 100)))
-  ; (q/line 0 0 (q/width) (q/height))
+  (gil/save-animation "/tmp/quil.gif" 150 0)
   )
 
 (defn main []
