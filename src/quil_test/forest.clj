@@ -57,6 +57,9 @@
         (update-in [:leaves] disj id)
         )))
 
+(defn get-node [forest id]
+  (get-in forest [:nodes id]))
+
 (defn spawn-child [forest parent-id pos]
   (let [[forest id] (add-node forest pos)
         forest (-> forest
@@ -70,6 +73,14 @@
 
 (defn leaves [forest] (-> forest :nodes (select-keys (:leaves forest)) (vals)))
 (defn leaf? [node] (empty? (:child-ids node)))
+
+(defn lines [forest]
+  (->> forest
+       (:nodes)
+       (vals)
+       (remove #(empty? (:parent-pos %)))
+       (map #(concat (:pos %) (:parent-pos %)))
+       ))
 
 (def my-forest
   (let [forest (new-forest)

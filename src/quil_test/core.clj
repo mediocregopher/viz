@@ -1,17 +1,22 @@
 (ns quil-test.core
   (:require [quil.core :as q]
             [quil.middleware :as m]
-            [quil-test.grid :as grid]))
+            [quil-test.forest :as forest]
+            [quil-test.ghost :as ghost]
+            ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn setup []
   ; Set frame rate to 30 frames per second.
   (q/frame-rate 30)
-  ; Set color mode to HSB (HSV) instead of default RGB.
-  ; (q/color-mode :hsb)
-  ; setup function returns initial state. It contains
-  ; circle color and position.
-  {:color 0xFFFF0000
-   :angle 0})
+  {:ghost (-> (ghost/new-ghost [0 0])
+              (ghost/incr)
+              (ghost/incr)
+              (ghost/incr)
+              (ghost/incr)
+              )
+   })
 
 (defn update-state [state] state)
 
@@ -22,16 +27,14 @@
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
-  (q/background 0xFF000000)
-  ; Set circle color.
-  (q/stroke 0xFFFF0000)
-  (q/fill 0xFFFF0000)
+  (q/background 0xFFFFFFFF)
+  (q/stroke 0xFF000000)
+  ;(q/fill 0xFFFF0000)
 
   (q/with-translation [(/ (q/width) 2)
                        (/ (q/height) 2)]
-    ; (q/ellipse 0 0 200 200)
-    (doseq [line-obj (tree-to-lines mytree 0 0 0)]
-      (apply q/line (map #(* 50 %1) (:line line-obj)))))
+    (doseq [line (forest/lines (get-in state [:ghost :forest]))]
+      (apply q/line (map #(* 50 %1) line))))
 
   ; Calculate x and y coordinates of the circle.
   ; (let [angle (:angle state)
