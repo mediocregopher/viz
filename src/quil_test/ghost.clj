@@ -48,9 +48,21 @@
          (reduce #(if (pred %2) (conj %1 (:id %2)) %1) #{}
                  (active-nodes ghost))))
 
+(defn remove-roots [ghost]
+  (let [roots (forest/roots (:forest ghost))
+        root-ids (map :id roots)
+        root-poss (map :pos roots)
+        ]
+    (-> ghost
+        (update-in [:active-node-ids] #(reduce disj %1 root-ids))
+        (update-in [:forest] #(reduce forest/remove-node %1 root-ids))
+        (update-in [:grid] #(reduce grid/rm-point %1 root-poss))
+        )))
+
+
 (-> (new-ghost grid/euclidean [0 0])
     (incr)
     (incr)
     (incr)
-    (filter-active-nodes #(even? (:id %1)))
+    (remove-roots)
     )

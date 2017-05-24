@@ -13,7 +13,8 @@
   (let [state { :frame-rate 15
                 :exit-wait-frames 15
                 :frame 0
-                :ghost (ghost/new-ghost grid/euclidean [0 0])
+                :tail-len 10
+                :ghost (ghost/new-ghost grid/isometric [0 0])
                 }]
     (q/frame-rate (:frame-rate state))
     state))
@@ -33,37 +34,62 @@
         ]
     [[(- w) (- h)] [w h]]))
 
-(defn- incr-ghost [state]
+(defn- ghost-incr [state]
   (assoc state :ghost
          (ghost/filter-active-nodes (ghost/incr (:ghost state))
                                     #(let [[minb maxb] (quil-bounds scale (* 2.5 scale))]
                                        (in-bounds? minb maxb (:pos %1))))))
 
+(defn- ghost-expire-roots [state]
+  (if-not (< (:tail-len state) (:frame state)) state
+    (update-in state [:ghost] ghost/remove-roots)))
+
 (defn- maybe-exit [state]
   (if (empty? (get-in state [:ghost :active-node-ids]))
-    (if (zero? (:exit-wait-frames state)) (do (q/exit) state)
+    (if (zero? (:exit-wait-frames state)) (do
+                                            ;(q/exit)
+                                            state
+                                            )
       (update-in state [:exit-wait-frames] dec))
     state))
 
 (defn update-state [state]
   (-> state
       (update-in [:frame] inc)
-      (incr-ghost)
+      (ghost-incr)
+      (ghost-expire-roots)
       (maybe-exit)))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   (q/background 0xFFFFFFFF)
-  (q/stroke 0xFF000000)
-  ;(q/fill 0xFFFF0000)
 
   (q/with-translation [(/ (q/width) 2)
                        (/ (q/height) 2)]
-    (let [ghost (if (:incr state) (:ghost-incr state) (:ghost state))]
-      (doseq [line (forest/lines (:forest ghost))]
-        (apply q/line (map #(* scale %1) line)))))
+    (let [lines (forest/lines (get-in state [:ghost :forest]))
+          leaves (forest/leaves (get-in state [:ghost :forest]))
+          active (ghost/active-nodes (:ghost state))
+          roots (forest/roots (get-in state [:ghost :forest]))
+          ]
 
-  (gil/save-animation "/tmp/quil.gif" 150 0)
+      (q/stroke 0xFF000000)
+      (doseq [line lines]
+        (apply q/line (map #(* scale %1) line)))
+
+      (q/stroke 0xFF000000)
+      (q/fill 0xFFFFFFFF)
+      (doseq [leef leaves]
+        (let [pos (:pos leef)]
+          (q/ellipse (* scale (first pos)) (* scale (second pos)) 3 3)))
+
+      (q/stroke 0xFF000000)
+      (q/fill 0xFF000000)
+      (doseq [active-node active]
+        (let [pos (:pos active-node)]
+          (q/ellipse (* scale (first pos)) (* scale (second pos)) 3 3)))
+      ))
+
+  (gil/save-animation "/tmp/quil.gif" 120 0)
   )
 
 (defn main []

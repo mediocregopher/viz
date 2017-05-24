@@ -10,6 +10,10 @@
                           ,
                 [-1 1]  [0 2]  [1 1]])
 
+(def hexagonal [        [0 -1]
+                          ,
+                [-1 1]         [1 1]])
+
 (defn new-grid [grid-def]
   { :grid-def grid-def
     :points   #{} })
