@@ -79,7 +79,7 @@
        (:nodes)
        (vals)
        (remove #(empty? (:parent-pos %)))
-       (map #(concat (:pos %) (:parent-pos %)))
+       (map #(vector (:pos %) (:parent-pos %)))
        ))
 
 (def my-forest
@@ -93,3 +93,4 @@
     forest))
 
 (identity my-forest)
+(lines my-forest)

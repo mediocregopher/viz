@@ -2,12 +2,18 @@
   (:require [quil-test.forest :as forest]
             [quil-test.grid   :as grid]))
 
-(defn new-ghost [grid-def init-pos]
-  (let [[forest init-id] (forest/add-node (forest/new-forest) init-pos)]
-    { :grid (grid/add-point (grid/new-grid grid-def) init-pos)
-      :forest forest
-      :active-node-ids #{init-id}
-     }))
+(defn new-ghost [grid-def]
+  { :grid (grid/new-grid grid-def)
+   :forest (forest/new-forest)
+   :active-node-ids #{}
+   })
+
+(defn new-active-node [ghost pos]
+  (let [[forest id] (forest/add-node (:forest ghost) pos)
+        grid (grid/add-point (:grid ghost) pos)]
+    (-> ghost
+        (assoc :grid grid :forest forest)
+        (update-in [:active-node-ids] conj id))))
 
 (defn- pick-nodes [nodes]
   (take 2 (random-sample 0.6 nodes)))
@@ -60,7 +66,8 @@
         )))
 
 
-(-> (new-ghost grid/euclidean [0 0])
+(-> (new-ghost grid/euclidean)
+    (new-active-node [0 0])
     (incr)
     (incr)
     (incr)

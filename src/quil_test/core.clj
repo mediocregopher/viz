@@ -9,17 +9,30 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def window-size [1000 1000])
+
+(defn- new-state []
+  { :frame-rate 30
+   :exit-wait-frames 15
+   :expire-frames 10
+   :frame 0
+   :gif-seconds 15
+   :grid-size [50 50] ; width/height from center
+   :ghost (-> (ghost/new-ghost grid/euclidean)
+              (ghost/new-active-node [40 40])
+              (ghost/new-active-node [-40 -40])
+              )
+   })
+
+
 (defn setup []
-  (let [state { :frame-rate 15
-                :exit-wait-frames 15
-                :frame 0
-                :tail-len 10
-                :ghost (ghost/new-ghost grid/isometric [0 0])
-                }]
+  (let [state (new-state)]
     (q/frame-rate (:frame-rate state))
     state))
 
-(def scale 5) ;; TODO make part of state?
+(defn- scale [state xy]
+  (map-indexed #(* %2 (/ (/ (window-size %1) 2)
+                         (get-in state [:grid-size %1]) )) xy))
 
 ; each bound is a position vector
 (defn- in-bounds? [min-bound max-bound pos]
@@ -28,26 +41,24 @@
                                (when (and (>= %2 mini) (<= %2 maxi)) %2)) pos)]
     (= (count pos) (count pos-k))))
 
-(defn- quil-bounds [scale buffer]
-  (let [w (/ (- (/ (q/width) 2) buffer) scale)
-        h (/ (- (/ (q/height) 2) buffer) scale)
-        ]
+(defn- quil-bounds [state buffer]
+  (let [[w h] (apply vector (map #(- % buffer) (:grid-size state)))]
     [[(- w) (- h)] [w h]]))
 
 (defn- ghost-incr [state]
   (assoc state :ghost
          (ghost/filter-active-nodes (ghost/incr (:ghost state))
-                                    #(let [[minb maxb] (quil-bounds scale (* 2.5 scale))]
+                                    #(let [[minb maxb] (quil-bounds state 2)]
                                        (in-bounds? minb maxb (:pos %1))))))
 
 (defn- ghost-expire-roots [state]
-  (if-not (< (:tail-len state) (:frame state)) state
+  (if-not (< (:expire-frames state) (:frame state)) state
     (update-in state [:ghost] ghost/remove-roots)))
 
 (defn- maybe-exit [state]
   (if (empty? (get-in state [:ghost :active-node-ids]))
     (if (zero? (:exit-wait-frames state)) (do
-                                            ;(q/exit)
+                                            (q/exit)
                                             state
                                             )
       (update-in state [:exit-wait-frames] dec))
@@ -60,12 +71,16 @@
       (ghost-expire-roots)
       (maybe-exit)))
 
+(defn- ellipse [state pos size] ; size is [w h]
+  (let [scaled-pos (scale state pos)
+        scaled-size (map int (scale state size))]
+    (apply q/ellipse (concat scaled-pos scaled-size))))
+
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   (q/background 0xFFFFFFFF)
-
-  (q/with-translation [(/ (q/width) 2)
-                       (/ (q/height) 2)]
+  (q/with-translation [(/ (window-size 0) 2)
+                       (/ (window-size 1) 2)]
     (let [lines (forest/lines (get-in state [:ghost :forest]))
           leaves (forest/leaves (get-in state [:ghost :forest]))
           active (ghost/active-nodes (:ghost state))
@@ -74,28 +89,33 @@
 
       (q/stroke 0xFF000000)
       (doseq [line lines]
-        (apply q/line (map #(* scale %1) line)))
+        (apply q/line (apply concat (map #(scale state %) line))))
 
       (q/stroke 0xFF000000)
       (q/fill 0xFFFFFFFF)
       (doseq [leef leaves]
         (let [pos (:pos leef)]
-          (q/ellipse (* scale (first pos)) (* scale (second pos)) 3 3)))
+          (ellipse state pos [0.5 0.5])
+          ))
 
       (q/stroke 0xFF000000)
       (q/fill 0xFF000000)
       (doseq [active-node active]
         (let [pos (:pos active-node)]
-          (q/ellipse (* scale (first pos)) (* scale (second pos)) 3 3)))
+          (ellipse state pos [0.5 0.5])
+          ))
       ))
 
-  (gil/save-animation "/tmp/quil.gif" 120 0)
+    (when-not (zero? (:gif-seconds state))
+      (let [anim-frames (* (:gif-seconds state) (:frame-rate state))]
+        (gil/save-animation "quil.gif" anim-frames 0)
+        (when (> (:frame state) anim-frames) (q/exit))))
   )
 
 (defn main []
   (q/defsketch quil-test
-    :title "You spin my circle right round"
-    :size [500 500]
+    :title ""
+    :size window-size
     ; setup function called only once, during sketch initialization.
     :setup setup
     ; update-state is called on each iteration before draw-state.
