@@ -12,15 +12,18 @@
 (def window-size [1000 1000])
 
 (defn- new-state []
-  { :frame-rate 30
+  {:frame-rate 30
    :exit-wait-frames 15
-   :expire-frames 10
+   :tail-length 20
    :frame 0
-   :gif-seconds 15
+   :gif-seconds 0
    :grid-size [50 50] ; width/height from center
-   :ghost (-> (ghost/new-ghost grid/euclidean)
-              (ghost/new-active-node [40 40])
-              (ghost/new-active-node [-40 -40])
+   :poss-fn (fn [pos adj-poss]
+              (if (zero? (rand-int 30))
+                (take 2 (shuffle adj-poss))
+                (take 1 (shuffle adj-poss))))
+   :ghost (-> (ghost/new-ghost grid/isometric)
+              (ghost/new-active-node [0 0])
               )
    })
 
@@ -47,12 +50,12 @@
 
 (defn- ghost-incr [state]
   (assoc state :ghost
-         (ghost/filter-active-nodes (ghost/incr (:ghost state))
+         (ghost/filter-active-nodes (ghost/incr (:ghost state) (:poss-fn state))
                                     #(let [[minb maxb] (quil-bounds state 2)]
                                        (in-bounds? minb maxb (:pos %1))))))
 
 (defn- ghost-expire-roots [state]
-  (if-not (< (:expire-frames state) (:frame state)) state
+  (if-not (< (:tail-length state) (:frame state)) state
     (update-in state [:ghost] ghost/remove-roots)))
 
 (defn- maybe-exit [state]

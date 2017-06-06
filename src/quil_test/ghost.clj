@@ -15,35 +15,29 @@
         (assoc :grid grid :forest forest)
         (update-in [:active-node-ids] conj id))))
 
-(defn- pick-nodes [nodes]
-  (take 2 (random-sample 0.6 nodes)))
-
-(defn- gen-new-poss [ghost id]
+(defn- gen-new-poss [ghost poss-fn id]
   "generates new positions branching from the given node"
-  (->> id
-       (#(forest/get-node (:forest ghost) %))
-       (:pos)
-       (#(grid/empty-adjacent-points (:grid ghost) %))
-       (pick-nodes)
-       ))
+  (let [pos (:pos (forest/get-node (:forest ghost) id))
+        adj-poss (grid/empty-adjacent-points (:grid ghost) pos)]
+    (poss-fn pos adj-poss)))
 
-(defn- spawn-children [ghost id]
+(defn- spawn-children [ghost poss-fn id]
   (reduce (fn [[ghost new-ids] pos]
             (let [[forest new-id] (forest/spawn-child (:forest ghost) id pos)
                   grid (grid/add-point (:grid ghost) pos)]
               [(assoc ghost :forest forest :grid grid) (conj new-ids new-id)]))
           [ghost #{}]
-          (gen-new-poss ghost id)))
+          (gen-new-poss ghost poss-fn id)))
 
-(defn- spawn-children-multi [ghost ids]
+(defn- spawn-children-multi [ghost poss-fn ids]
   (reduce (fn [[ghost new-ids] id]
-            (let [[ghost this-new-ids] (spawn-children ghost id)]
+            (let [[ghost this-new-ids] (spawn-children ghost poss-fn id)]
               [ghost (clojure.set/union new-ids this-new-ids)]))
           [ghost #{}]
           ids))
 
-(defn incr [ghost]
-  (let [[ghost new-ids] (spawn-children-multi ghost (:active-node-ids ghost))]
+(defn incr [ghost poss-fn]
+  (let [[ghost new-ids] (spawn-children-multi ghost poss-fn (:active-node-ids ghost))]
     (assoc ghost :active-node-ids new-ids)))
 
 (defn active-nodes [ghost]
@@ -65,11 +59,13 @@
         (update-in [:grid] #(reduce grid/rm-point %1 root-poss))
         )))
 
+(defn- eg-poss-fn [pos adj-poss]
+  (take 2 (random-sample 0.6 adj-poss)))
 
 (-> (new-ghost grid/euclidean)
     (new-active-node [0 0])
-    (incr)
-    (incr)
-    (incr)
+    (incr eg-poss-fn)
+    (incr eg-poss-fn)
+    (incr eg-poss-fn)
     (remove-roots)
     )
