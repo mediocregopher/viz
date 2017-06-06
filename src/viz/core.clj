@@ -1,9 +1,9 @@
-(ns quil-test.core
+(ns viz.core
   (:require [quil.core :as q]
             [quil.middleware :as m]
-            [quil-test.forest :as forest]
-            [quil-test.grid :as grid]
-            [quil-test.ghost :as ghost]
+            [viz.forest :as forest]
+            [viz.grid :as grid]
+            [viz.ghost :as ghost]
             [gil.core :as gil]
             ))
 
@@ -116,7 +116,7 @@
   )
 
 (defn main []
-  (q/defsketch quil-test
+  (q/defsketch viz
     :title ""
     :size window-size
     ; setup function called only once, during sketch initialization.

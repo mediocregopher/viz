@@ -1,4 +1,4 @@
-(ns quil-test.grid)
+(ns viz.grid)
 
 ;; grid     set of points relative to a common origin
 

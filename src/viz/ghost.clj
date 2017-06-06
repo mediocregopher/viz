@@ -1,6 +1,6 @@
-(ns quil-test.ghost
-  (:require [quil-test.forest :as forest]
-            [quil-test.grid   :as grid]))
+(ns viz.ghost
+  (:require [viz.forest :as forest]
+            [viz.grid   :as grid]))
 
 (defn new-ghost [grid-def]
   { :grid (grid/new-grid grid-def)

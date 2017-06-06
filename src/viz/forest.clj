@@ -1,4 +1,4 @@
-(ns quil-test.forest)
+(ns viz.forest)
 
 (defn new-forest []
   {:nodes {}
