@@ -6,4 +6,16 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [quil "2.6.0"]
                  [gil "1.0.0-SNAPSHOT"]
-                 ])
+                 [org.clojure/clojurescript "1.9.473"]]
+
+  :plugins [[lein-cljsbuild "1.1.5"]]
+  :hooks [leiningen.cljsbuild]
+
+  :cljsbuild
+  {:builds [{:source-paths ["src"]
+             :compiler
+             {:output-to "js/main.js"
+              :output-dir "out"
+              :main "viz.core"
+              :optimizations :none
+              :pretty-print true}}]})

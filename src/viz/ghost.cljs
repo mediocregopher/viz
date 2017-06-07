@@ -1,6 +1,7 @@
 (ns viz.ghost
   (:require [viz.forest :as forest]
-            [viz.grid   :as grid]))
+            [viz.grid   :as grid]
+            clojure.set))
 
 (defn new-ghost [grid-def]
   { :grid (grid/new-grid grid-def)

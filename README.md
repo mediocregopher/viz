@@ -1,14 +1,12 @@
-# viz
+# test-js
 
 A Quil sketch designed to ... well, that part is up to you.
 
 ## Usage
 
-LightTable - open `core.clj` and press `Ctrl+Shift+Enter` to evaluate the file.
+Run `lein compile` command and open `index.html` in your browser.
 
-Emacs - run cider, open `core.clj` and press `C-c C-k` to evaluate the file.
-
-REPL - run `(require 'viz.core)`.
+For interactive development run `lein cljsbuild auto` command. This command will be recompiling cljs to js each time you modify `core.cljs` and you can see result immediately by refreshing page.
 
 ## License
 

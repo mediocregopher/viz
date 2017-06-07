@@ -1,15 +1,17 @@
 (ns viz.core
-  (:require [quil.core :as q]
+  (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]
             [viz.forest :as forest]
             [viz.grid :as grid]
             [viz.ghost :as ghost]
-            [gil.core :as gil]
+            [goog.string :as gstring]
+            [goog.string.format]
+            ;[gil.core :as gil]
             ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def window-size [1000 1000])
+(def window-size [800 800])
 (def window-half-size (apply vector (map #(float (/ %1 2)) window-size)))
 
 (defn- new-state []
@@ -119,50 +121,47 @@
       (doseq [line lines]
         (apply q/line (apply concat (map #(scale state %) line))))
 
-      ;(q/stroke 0xFF000000)
-      ;(q/fill 0xFFFFFFFF)
-      ;(doseq [leef leaves]
-      ;  (let [pos (:pos leef)]
-      ;    (ellipse state pos [0.5 0.5])
-      ;    ))
+      (q/stroke 0xFF000000)
+      (q/fill 0xFFFFFFFF)
+      (doseq [leef leaves]
+        (let [pos (:pos leef)]
+          (ellipse state pos [0.5 0.5])
+          ))
 
-      ;(q/stroke 0xFF000000)
-      ;(q/fill 0xFF000000)
-      ;(doseq [active-node active]
-      ;  (let [pos (:pos active-node)]
-      ;    (ellipse state pos [0.5 0.5])
-      ;    ))
-
+      (q/stroke 0xFF000000)
+      (q/fill 0xFF000000)
+      (doseq [active-node active]
+        (let [pos (:pos active-node)]
+          (ellipse state pos [0.5 0.5])
+          ))
 
       ))
 
-    (when-not (zero? (:gif-seconds state))
-      (let [anim-frames (* (:gif-seconds state) (:frame-rate state))]
-        (gil/save-animation "quil.gif" anim-frames 0)
-        (when (> (:frame state) anim-frames) (q/exit))))
+    ;(when-not (zero? (:gif-seconds state))
+    ;  (let [anim-frames (* (:gif-seconds state) (:frame-rate state))]
+    ;    (gil/save-animation "quil.gif" anim-frames 0)
+    ;    (when (> (:frame state) anim-frames) (q/exit))))
 
-    (q/text (clojure.string/join
-              "\n"
-              (list
-                (format "frame:%d" (:frame state))
-                (format "second:%f" (curr-second state))
-                (format "spawn-chance:%d" (spawn-chance state))))
-            30 30)
+    ;(q/text (clojure.string/join
+    ;          "\n"
+    ;          (list
+    ;            (gstring/format "frame:%d" (:frame state))
+    ;            (gstring/format "second:%f" (curr-second state))
+    ;            (gstring/format "spawn-chance:%d" (spawn-chance state))))
+    ;        30 30)
   )
 
-(defn main []
-  (q/defsketch viz
-    :title ""
-    :size window-size
-    ; setup function called only once, during sketch initialization.
-    :setup setup
-    ; update-state is called on each iteration before draw-state.
-    :update update-state
-    :draw draw-state
-    :features [:keep-on-top]
-    ; This sketch uses functional-mode middleware.
-    ; Check quil wiki for more info about middlewares and particularly
-    ; fun-mode.
-    :middleware [m/fun-mode]))
-
-(main)
+(q/defsketch viz
+  :title ""
+  :host "viz"
+  :size window-size
+  ; setup function called only once, during sketch initialization.
+  :setup setup
+  ; update-state is called on each iteration before draw-state.
+  :update update-state
+  :draw draw-state
+  :features [:keep-on-top]
+  ; This sketch uses functional-mode middleware.
+  ; Check quil wiki for more info about middlewares and particularly
+  ; fun-mode.
+  :middleware [m/fun-mode])
