@@ -11,7 +11,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def window-size [800 800])
+(def window-size [ (- (aget js/document "documentElement" "clientWidth") 20)
+                   (- (aget js/document "documentElement" "clientHeight") 20)
+                   ])
 (def window-half-size (apply vector (map #(float (/ %1 2)) window-size)))
 
 (defn- new-state []
@@ -20,7 +22,7 @@
    :tail-length 40
    :frame 0
    :gif-seconds 0
-   :grid-size [50 50] ; width/height from center
+   :grid-width 60 ; from the center
    :ghost (-> (ghost/new-ghost grid/euclidean)
               (ghost/new-active-node [0 0])
               )
@@ -28,6 +30,11 @@
 
 (defn- curr-second [state]
   (float (/ (:frame state) (:frame-rate state))))
+
+(defn- grid-size [state]
+  (let [h (int (* (window-size 1)
+                  (float (/ (:grid-width state) (window-size 0)))))]
+             [(:grid-width state) h]))
 
 (defn- positive [n] (if (> 0 n) (- n) n))
 
@@ -62,7 +69,7 @@
 
 (defn- scale [state xy]
   (map-indexed #(* %2 (float (/ (window-half-size %1)
-                                (get-in state [:grid-size %1])))) xy))
+                                ((grid-size state) %1)))) xy))
 
 ; each bound is a position vector
 (defn- in-bounds? [min-bound max-bound pos]
@@ -72,7 +79,7 @@
     (= (count pos) (count pos-k))))
 
 (defn- quil-bounds [state buffer]
-  (let [[w h] (apply vector (map #(- % buffer) (:grid-size state)))]
+  (let [[w h] (apply vector (map #(- % buffer) (grid-size state)))]
     [[(- w) (- h)] [w h]]))
 
 (defn- ghost-incr [state]
@@ -87,10 +94,7 @@
 
 (defn- maybe-exit [state]
   (if (empty? (get-in state [:ghost :active-node-ids]))
-    (if (zero? (:exit-wait-frames state)) (do
-                                            (q/exit)
-                                            state
-                                            )
+    (if (zero? (:exit-wait-frames state)) (new-state)
       (update-in state [:exit-wait-frames] dec))
     state))
 
