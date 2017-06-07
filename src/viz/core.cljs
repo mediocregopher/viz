@@ -129,14 +129,14 @@
       (q/fill 0xFFFFFFFF)
       (doseq [leef leaves]
         (let [pos (:pos leef)]
-          (ellipse state pos [0.5 0.5])
+          (ellipse state pos [0.3 0.3])
           ))
 
       (q/stroke 0xFF000000)
       (q/fill 0xFF000000)
       (doseq [active-node active]
         (let [pos (:pos active-node)]
-          (ellipse state pos [0.5 0.5])
+          (ellipse state pos [0.35 0.35])
           ))
 
       ))
