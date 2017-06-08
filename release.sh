@@ -7,3 +7,5 @@ lein cljsbuild once
 
 mkdir -p rel/$1
 cp -r index.html css js out rel/$1/
+
+sed -i "s/~COMMIT/$(git rev-parse HEAD)/" rel/$1/index.html
