@@ -9,20 +9,26 @@
             ;[gil.core :as gil]
             ))
 
+(defn- debug [& args]
+  (.log js/console (clojure.string/join " " (map str args))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def window-size [ (- (aget js/document "documentElement" "clientWidth") 20)
-                   (- (aget js/document "documentElement" "clientHeight") 20)
+(defn- window-partial [k]
+  (int (* (aget js/document "documentElement" k) 0.95)))
+
+(def window-size [ (min 1025 (window-partial "clientWidth"))
+                   (int (* (window-partial "clientHeight") 0.75))
                    ])
 (def window-half-size (apply vector (map #(float (/ %1 2)) window-size)))
 
 (defn- new-state []
-  {:frame-rate 30
+  {:frame-rate 15
    :exit-wait-frames 40
-   :tail-length 40
+   :tail-length 15
    :frame 0
    :gif-seconds 0
-   :grid-width 60 ; from the center
+   :grid-width 30 ; from the center
    :ghost (-> (ghost/new-ghost grid/euclidean)
               (ghost/new-active-node [0 0])
               )
@@ -54,13 +60,17 @@
   ;  ))
 
 
+;(defn- mk-poss-fn [state]
+;  (let [chance (spawn-chance state)]
+;    (fn [pos adj-poss]
+;      (if (zero? (rand-int chance))
+;        adj-poss
+;        (take 1 (shuffle adj-poss))))
+;    ))
+
 (defn- mk-poss-fn [state]
-  (let [chance (spawn-chance state)]
-    (fn [pos adj-poss]
-      (if (zero? (rand-int chance))
-        adj-poss
-        (take 1 (shuffle adj-poss))))
-    ))
+  (fn [pos adj-poss]
+    (take 2 (random-sample 0.6 adj-poss))))
 
 (defn setup []
   (let [state (new-state)]
@@ -105,10 +115,40 @@
       (update-in [:frame] inc)
       (maybe-exit)))
 
-(defn- ellipse [state pos size] ; size is [w h]
+(defn- draw-ellipse [state pos size] ; size is [w h]
   (let [scaled-pos (scale state pos)
         scaled-size (map int (scale state size))]
     (apply q/ellipse (concat scaled-pos scaled-size))))
+
+(defn- in-line? [& nodes]
+  (apply = (map #(apply map - %1)
+                (partition 2 1 (map :pos nodes)))))
+
+(defn draw-lines [state forest parent node]
+  "Draws the lines of all children leading from the node, recursively"
+  (q/stroke 0xFF000000)
+  (q/fill 0xFFFFFFFF)
+  (let [children (map #(forest/get-node forest %) (:child-ids node))]
+
+    (if-not parent
+      (doseq [child children] (draw-lines state forest node child))
+      (let [in-line-child (some #(if (in-line? parent node %) %) children)
+            ]
+        (doseq [child children]
+          (if (and in-line-child (= in-line-child child))
+            (draw-lines state forest parent child)
+            (draw-lines state forest node child)))
+        (when-not in-line-child
+          (apply q/line (apply concat
+                               (map #(scale state %)
+                                    (map :pos (list parent node))))))
+        ))
+
+    ; we also take the opportunity to draw the leaves
+    (when (empty? children)
+      (draw-ellipse state (:pos node) [0.3 0.3]))
+
+    ))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
@@ -122,21 +162,14 @@
           ]
 
       (q/stroke 0xFF000000)
-      (doseq [line lines]
-        (apply q/line (apply concat (map #(scale state %) line))))
-
-      (q/stroke 0xFF000000)
-      (q/fill 0xFFFFFFFF)
-      (doseq [leef leaves]
-        (let [pos (:pos leef)]
-          (ellipse state pos [0.3 0.3])
-          ))
+      (doseq [root roots]
+        (draw-lines state (get-in state [:ghost :forest]) nil root))
 
       (q/stroke 0xFF000000)
       (q/fill 0xFF000000)
       (doseq [active-node active]
         (let [pos (:pos active-node)]
-          (ellipse state pos [0.35 0.35])
+          (draw-ellipse state pos [0.35 0.35])
           ))
 
       ))

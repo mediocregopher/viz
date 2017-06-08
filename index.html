@@ -1,10 +1,50 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>viz</title>
-    <script src="js/main.js"></script>
-  </head>
-  <body>
-    <canvas id="viz"></canvas>
-  </body>
+    <head>
+        <title>viz</title>
+
+        <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet">
+        <link rel="stylesheet" href="css/normalize.css">
+        <link rel="stylesheet" href="css/skeleton.css">
+
+        <style type="text/css">
+            * {
+                font-family: 'Source Code Pro', monospace;
+            }
+            #viz {
+                //border: 1px solid grey;
+            }
+        </style>
+
+        <script src="js/main.js"></script>
+    </head>
+    <body>
+        <p align="center" style="margin-top:1%;"> <canvas id="viz"></canvas> </p>
+        <div class="container">
+            <div class="row" style="margin-top: 10%; margin-bottom:1%;">
+                <div class="twelve column">
+                    <h1>1</h1>
+                    <p>
+                    Using clojurescript and
+                    <a href="https://quil.info">quil</a>.
+                    </p>
+                    <p>
+                    Any point can only be occupied by a single dot.</br>
+                    A line cannot intersect another line.</br>
+                    Every tick a point may spawn 0 or more adjacent points.
+                    </p>
+                    <p>
+                    In this implementation adjacent points are chosen randomly,
+                    both in number and direction. The result is somewhere between
+                    Conway's Game of Life and white noise.
+                    </p>
+                    <p>
+                    This implementation is hella slow, most time is spent drawing
+                    the lines. This was optimized so that adjacent parallel lines
+                    are drawn in a single operation, but that produced negligible
+                    benefit.
+                    </p>
+                </div>
+            </div>
+    </body>
 </html>
