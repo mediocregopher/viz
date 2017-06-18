@@ -57,6 +57,12 @@
         (update-in [:leaves] disj id)
         )))
 
+(defn update-node-meta [forest id f]
+  (update-in forest [:nodes id :meta] f))
+
+(defn get-node-meta [forest id]
+  (get-in forest [:nodes id]))
+
 (defn get-node [forest id]
   (get-in forest [:nodes id]))
 
@@ -89,8 +95,8 @@
         [forest id2] (spawn-child forest id0 [-1 -1])
         [forest id3] (spawn-child forest id1 [2 2])
         forest (remove-node forest id1)
+        forest (update-node-meta forest id0 #(assoc-in % [:foo] :bar))
         ]
     forest))
 
 (identity my-forest)
-(lines my-forest)

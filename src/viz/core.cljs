@@ -29,7 +29,7 @@
    :frame 0
    :gif-seconds 0
    :grid-width 30 ; from the center
-   :ghost (-> (ghost/new-ghost grid/euclidean)
+   :ghost (-> (ghost/new-ghost grid/isometric)
               (ghost/new-active-node [0 0])
               )
    })
@@ -45,6 +45,7 @@
 (defn- positive [n] (if (> 0 n) (- n) n))
 
 (defn- spawn-chance [state]
+  "Gives a chance of spawning based on the current run time"
   (let [period-seconds 1
         period-frames (* (:frame-rate state) period-seconds)]
   (if (zero? (rem (:frame state) period-frames))
@@ -59,6 +60,19 @@
   ;    (if (> chance-raw 0.97) 3 50)
   ;  ))
 
+(defn- spawn-all? [state]
+  (let [period-seconds 3
+        period-frames (* (:frame-rate state) period-seconds)]
+  (zero? (rem (:frame state) period-frames))))
+
+(defn- dist-from [pos1 pos2]
+  (reduce + (map #(* % %) (map - pos1 pos2))))
+
+(defn- mk-poss-fn [state]
+  (let [spawn-all? (spawn-all? state)]
+    (fn [pos adj-poss]
+      (let [to-take (if spawn-all? (count adj-poss) 1)]
+        (take to-take (sort-by #(dist-from % [0 0]) adj-poss))))))
 
 ;(defn- mk-poss-fn [state]
 ;  (let [chance (spawn-chance state)]
@@ -68,9 +82,9 @@
 ;        (take 1 (shuffle adj-poss))))
 ;    ))
 
-(defn- mk-poss-fn [state]
-  (fn [pos adj-poss]
-    (take 2 (random-sample 0.6 adj-poss))))
+;(defn- mk-poss-fn [state]
+;  (fn [pos adj-poss]
+;    (take 2 (random-sample 0.6 adj-poss))))
 
 (defn setup []
   (let [state (new-state)]
@@ -92,6 +106,7 @@
   (let [[w h] (apply vector (map #(- % buffer) (grid-size state)))]
     [[(- w) (- h)] [w h]]))
 
+; TODO these ghost methods should just go in ghost
 (defn- ghost-incr [state]
   (assoc state :ghost
          (ghost/filter-active-nodes (ghost/incr (:ghost state) (mk-poss-fn state))
@@ -101,6 +116,13 @@
 (defn- ghost-expire-roots [state]
   (if-not (< (:tail-length state) (:frame state)) state
     (update-in state [:ghost] ghost/remove-roots)))
+
+(defn- ghost-update-node-meta [state id f]
+  (update-in state [:ghost :forest] forest/update-node-meta id f))
+
+(defn- ghost-set-nodes-red [state]
+  (reduce #(ghost-update-node-meta %1 %2 (fn [ma] (assoc m :color 0xFFFF0000)))
+          state (get-in state [:ghost :active-node-ids])))
 
 (defn- maybe-exit [state]
   (if (empty? (get-in state [:ghost :active-node-ids]))
@@ -112,6 +134,7 @@
   (-> state
       (ghost-incr)
       (ghost-expire-roots)
+      (ghost-set-nodes-red)
       (update-in [:frame] inc)
       (maybe-exit)))
 
@@ -124,10 +147,26 @@
   (apply = (map #(apply map - %1)
                 (partition 2 1 (map :pos nodes)))))
 
+(defn- draw-node [state node active?]
+  (let [pos (:pos node)
+        stroke (-> node :meta :color)
+        fill   (if active? stroke 0xFFFFFFFF)
+        size   (if active? 0.35 0.3)]
+    (q/stroke stroke)
+    (q/fill fill)
+    (draw-ellipse state pos [size size])))
+
+(defn- draw-line [state node parent]
+  ; TODO take the averate of the colors
+  (let [color (-> node :meta :color)]
+    (q/stroke color)
+    (q/fill color)
+    (apply q/line (apply concat
+                         (map #(scale state %)
+                              (map :pos (list parent node)))))))
+
 (defn draw-lines [state forest parent node]
   "Draws the lines of all children leading from the node, recursively"
-  (q/stroke 0xFF000000)
-  (q/fill 0xFFFFFFFF)
   (let [children (map #(forest/get-node forest %) (:child-ids node))]
 
     (if-not parent
@@ -139,14 +178,12 @@
             (draw-lines state forest parent child)
             (draw-lines state forest node child)))
         (when-not in-line-child
-          (apply q/line (apply concat
-                               (map #(scale state %)
-                                    (map :pos (list parent node))))))
+          (draw-line state node parent))
         ))
 
     ; we also take the opportunity to draw the leaves
     (when (empty? children)
-      (draw-ellipse state (:pos node) [0.3 0.3]))
+      (draw-node state node false))
 
     ))
 
@@ -168,10 +205,7 @@
       (q/stroke 0xFF000000)
       (q/fill 0xFF000000)
       (doseq [active-node active]
-        (let [pos (:pos active-node)]
-          (draw-ellipse state pos [0.35 0.35])
-          ))
-
+        (draw-node state active-node true))
       ))
 
     ;(when-not (zero? (:gif-seconds state))
