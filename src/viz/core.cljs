@@ -28,7 +28,7 @@
    :tail-length 15
    :frame 0
    :gif-seconds 0
-   :grid-width 30 ; from the center
+   :grid-width 35 ; from the center
    :ghost (-> (ghost/new-ghost grid/isometric)
               (ghost/new-active-node [0 0])
               )
@@ -71,8 +71,10 @@
 (defn- mk-poss-fn [state]
   (let [spawn-all? (spawn-all? state)]
     (fn [pos adj-poss]
-      (let [to-take (if spawn-all? (count adj-poss) 1)]
-        (take to-take (sort-by #(dist-from % [0 0]) adj-poss))))))
+      (let [adj-poss (filter #(in-bounds? state %) adj-poss)
+            to-take (if spawn-all? (count adj-poss) 1)]
+        (take to-take (sort-by #(dist-from % [0 0]) adj-poss))
+        ))))
 
 ;(defn- mk-poss-fn [state]
 ;  (let [chance (spawn-chance state)]
@@ -95,25 +97,21 @@
   (map-indexed #(* %2 (float (/ (window-half-size %1)
                                 ((grid-size state) %1)))) xy))
 
-; each bound is a position vector
-(defn- in-bounds? [min-bound max-bound pos]
-  (let [pos-k (keep-indexed #(let [mini (min-bound %1)
-                                   maxi (max-bound %1)]
-                               (when (and (>= %2 mini) (<= %2 maxi)) %2)) pos)]
-    (= (count pos) (count pos-k))))
-
 (defn- quil-bounds [state buffer]
   (let [[w h] (apply vector (map #(- % buffer) (grid-size state)))]
     [[(- w) (- h)] [w h]]))
 
-; TODO these ghost methods should just go in ghost
-(defn- ghost-incr [state]
-  (assoc state :ghost
-         (ghost/filter-active-nodes (ghost/incr (:ghost state) (mk-poss-fn state))
-                                    #(let [[minb maxb] (quil-bounds state 2)]
-                                       (in-bounds? minb maxb (:pos %1))))))
+(defn- in-bounds? [state pos]
+  (let [[min-bound max-bound] (quil-bounds state 1)
+        pos-k (keep-indexed #(let [mini (min-bound %1)
+                                   maxi (max-bound %1)]
+                               (when (and (>= %2 mini) (<= %2 maxi)) %2)) pos)]
+    (= (count pos) (count pos-k))))
 
-(defn- ghost-expire-roots [state]
+(defn- ghost-incr [state poss-fn]
+  (update-in state [:ghost] ghost/incr poss-fn))
+
+(defn- maybe-remove-roots [state]
   (if-not (< (:tail-length state) (:frame state)) state
     (update-in state [:ghost] ghost/remove-roots)))
 
@@ -131,12 +129,13 @@
     state))
 
 (defn update-state [state]
-  (-> state
-      (ghost-incr)
-      (ghost-expire-roots)
-      (ghost-set-nodes-red)
-      (update-in [:frame] inc)
-      (maybe-exit)))
+  (let [poss-fn (mk-poss-fn state)]
+    (-> state
+        (ghost-incr poss-fn)
+        (ghost-set-nodes-red)
+        (maybe-remove-roots)
+        (update-in [:frame] inc)
+        (maybe-exit))))
 
 (defn- draw-ellipse [state pos size] ; size is [w h]
   (let [scaled-pos (scale state pos)
