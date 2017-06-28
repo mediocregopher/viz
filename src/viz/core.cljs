@@ -1,9 +1,10 @@
 (ns viz.core
-  (:require [quil.core :as q :include-macros true]
+  (:require [quil.core :as q]
             [quil.middleware :as m]
             [viz.forest :as forest]
             [viz.grid :as grid]
             [viz.ghost :as ghost]
+            [viz.dial :as dial]
             [goog.string :as gstring]
             [goog.string.format]
             ;[gil.core :as gil]
@@ -30,11 +31,11 @@
    :exit-wait-frames 40
    :tail-length 7
    :frame 0
-   :dial 0
+   :dial (dial/new-dial)
    :gif-seconds 0
    :grid-width 35 ; from the center
    :ghost (-> (ghost/new-ghost grid/isometric)
-              (ghost/new-active-node [0 0])
+              (ghost/new-active-node [10 10])
               )
    })
 
@@ -72,51 +73,98 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; dials
 
-(def dial-period-seconds 2)
-(def dial-offset-seconds 0.5)
-(def dial-width-frames 1)
+(defn- ceil-one [x]
+  (if (> x 0) 1 0))
+
+(def dial-period-seconds 1)
 
 (defn- set-dial [state]
-  (let [period-frames (* (:frame-rate state) dial-period-seconds)
-        frame-in-second (rem (:frame state) (int period-frames))
-        offset-frame (int (* (:frame-rate state) dial-offset-seconds))]
-    (assoc state :dial
-           (if (or (and (>= frame-in-second 0) (< frame-in-second dial-width-frames))
-                   (and (>= frame-in-second offset-frame) (< frame-in-second (+ dial-width-frames offset-frame))))
-             1
-             0))))
+  (let [rad-per-second (float (/ (* Math/PI 2) dial-period-seconds))
+        rad (* rad-per-second (curr-second state))
+        ]
+    (assoc-in state [:dial :val]
+              (* (ceil-one (q/sin rad))
+                 ;(ceil-one (q/sin (* 2 rad)))
+                 (q/sin (* -2 rad))))
+    ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; poss-fn
 
-  ;(let [period-seconds 1
-  ;      rad-per-second (float (/ (/ Math/PI 2) period-seconds))
-  ;      rad (* rad-per-second (curr-second state))
-  ;      chance-raw (positive (q/sin rad))
-  ;      ]
-  ;    (if (> chance-raw 0.97) 3 50)
-  ;  ))
-
-(defn- dist-from [pos1 pos2]
+(defn- dist-from-sqr [pos1 pos2]
   (reduce + (map #(* % %) (map - pos1 pos2))))
 
-(def mk-poss-fns {
-                  :random (fn [state]
-                            (fn [pos adj-poss]
-                              (take 2 (random-sample 0.6 adj-poss))))
+(defn- dist-from [pos1 pos2]
+  (q/sqrt (dist-from-sqr pos1 pos2)))
 
-                  :centered (fn [state]
-                              (let [spawn-all? (= 1 (:dial state))]
-                                (fn [pos adj-poss]
-                                  (let [to-take (if spawn-all? (count adj-poss) 1)]
-                                    (take to-take (sort-by #(dist-from % [0 0]) adj-poss))
-                                    ))))
-               })
+(defn- mk-order-adj-poss-fn [& ks]
+  (fn [state]
+    (let [fns (map #(% state)
+                   (map order-adj-poss-fns ks))
+          ]
+      (fn [pos adj-poss]
+        (reduce
+          (fn [inner-adj-poss next-fn] (next-fn pos inner-adj-poss))
+          adj-poss
+          fns))
+      )))
+
+(def order-adj-poss-fns
+  {:random (fn [state]
+             (fn [pos adj-poss] (shuffle adj-poss)))
+
+   :centered (fn [state]
+               (fn [pos adj-poss]
+                 (sort-by #(dist-from-sqr % [0 0]) adj-poss)))
+   })
+
+(defn- mk-take-adj-poss-fn [& ks]
+  (fn [state]
+    (let [fns (map #(% state)
+                   (map take-adj-poss-fns ks))
+          ]
+      (fn [pos adj-poss]
+        (let [mults (map #(% pos adj-poss) fns)
+              mult (reduce * 1 mults)
+              to-take (int (* mult (count adj-poss)))
+              ]
+          (take to-take adj-poss)))
+      )))
+
+(def take-adj-poss-fns
+  {:random (fn [state]
+             (fn [pos adj-poss]
+               (q/map-range (rand) 0 1 0.75 1)))
+   :dial (fn [state]
+           (fn [pos adj-poss]
+             (-> (:dial state)
+                 (dial/scaled 0.75 1.75)
+                 (:val)
+                 )))
+   :centered (fn [state]
+               (fn [pos adj-poss]
+                  (let [d (dist-from [0 0] pos)
+                        max-d (state :grid-width)
+                        norm-d (/ d max-d)
+                        ]
+                    (- 1 norm-d)
+                    )))
+   })
+
+(def order-adj-poss-fn (mk-order-adj-poss-fn :centered))
+(def take-adj-poss-fn (mk-take-adj-poss-fn :centered :dial :random))
 
 (defn- mk-poss-fn [state]
-  (let [chosen-poss-fn :centered
-        inner-fn ((chosen-poss-fn mk-poss-fns) state)]
-    (fn [pos adj-poss] (inner-fn pos (filter #(in-bounds? state %) adj-poss)))))
+  (let [order-inner-fn (order-adj-poss-fn state)
+        take-inner-fn (take-adj-poss-fn state)
+        ]
+    (fn [pos adj-poss]
+      (let [adj-poss (filter #(in-bounds? state %) adj-poss)
+            adj-poss-ordered (order-inner-fn pos adj-poss)
+            to-take (take-inner-fn pos adj-poss)
+            ]
+        (take-inner-fn pos adj-poss-ordered)))
+    ))
 
 ;; ghost
 
@@ -130,10 +178,10 @@
 (defn- ghost-update-node-meta [state id f]
   (update-in state [:ghost :forest] forest/update-node-meta id f))
 
-(defn- ghost-set-nodes-color [state]
-  (let [color (if (zero? (:dial state)) 0xFF000000 0xFFFF0000)]
-    (reduce #(ghost-update-node-meta %1 %2 (fn [ma] (assoc m :color color)))
-            state (get-in state [:ghost :active-node-ids]))))
+;(defn- ghost-set-nodes-color [state]
+;  (let [color (if (zero? (:dial state)) 0xFF000000 0xFFFF0000)]
+;    (reduce #(ghost-update-node-meta %1 %2 (fn [m] (assoc m :color color)))
+;            state (get-in state [:ghost :active-node-ids]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; update
@@ -149,10 +197,11 @@
     (-> state
         (set-dial)
         (ghost-incr poss-fn)
-        (ghost-set-nodes-color)
+        ;(ghost-set-nodes-color)
         (maybe-remove-roots)
         (update-in [:frame] inc)
-        (maybe-exit))))
+        (maybe-exit)
+        )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; draw
@@ -168,21 +217,22 @@
 
 (defn- draw-node [state node active?]
   (let [pos (:pos node)
-        stroke (-> node :meta :color)
+        stroke 0xFFFF0000
         fill   (if active? stroke 0xFFFFFFFF)
-        size   (if active? 0.35 0.3)]
+        size   (:val (dial/scaled (:dial state) 0.25 0.45))
+        ]
     (q/stroke stroke)
     (q/fill fill)
     (draw-ellipse state pos [size size])))
 
 (defn- draw-line [state node parent]
-  ; TODO take the averate of the colors
-  (let [color (-> node :meta :color)]
+  ; TODO take the average of the colors
+  (let [color 0xFFFF0000
+        weight (:val (dial/scaled (:dial state) 0.1 2))
+        ]
     (q/stroke color)
-    (q/fill color)
-    (apply q/line (apply concat
-                         (map #(scale state %)
-                              (map :pos (list parent node)))))))
+    (q/stroke-weight weight)
+    (apply q/line (map #(scale state %) (map :pos (list parent node))))))
 
 (defn draw-lines [state forest parent node]
   "Draws the lines of all children leading from the node, recursively"
@@ -206,6 +256,16 @@
 
     ))
 
+(defn draw-dial [state dial posL posR]
+  (let [dial-norm (q/norm (:val dial) (:min dial) (:max dial))
+        dial-pos (map #(q/lerp %1 %2 dial-norm) posL posR)]
+    (q/stroke 0xFF000000)
+    (q/stroke-weight 1)
+    (q/fill   0xFF000000)
+    (apply q/line (concat posL posR))
+    (apply q/ellipse (concat dial-pos [5 5]))
+    ))
+
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   (q/background 0xFFFFFFFF)
@@ -226,6 +286,8 @@
       (doseq [active-node active]
         (draw-node state active-node true))
       ))
+
+    (draw-dial state (:dial state) [30 30] [100 30])
 
     ;(when-not (zero? (:gif-seconds state))
     ;  (let [anim-frames (* (:gif-seconds state) (:frame-rate state))]
