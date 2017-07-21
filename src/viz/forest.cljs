@@ -1,7 +1,10 @@
-(ns viz.forest)
+(ns viz.forest
+  (:require [viz.grid :as grid])
+  )
 
-(defn new-forest []
-  {:nodes {}
+(defn new-forest [grid-def]
+  {:grid (grid/new-grid grid-def)
+   :nodes {}
    :roots #{}
    :leaves #{}
    :next-id 0})
@@ -33,9 +36,16 @@
         (#(if prev-parent-id (unset-parent %1 id prev-parent-id) %1))
         )))
 
+(defn node-at-pos? [forest pos]
+  (boolean (some #(= pos (:pos %)) (vals (:nodes forest)))))
+
+(defn empty-adjacent-points [forest pos]
+  (grid/empty-adjacent-points (:grid forest) pos))
+
 (defn add-node [forest pos]
   (let [[forest id] (new-id forest)
         forest (-> forest
+                   (update-in [:grid] grid/add-point pos)
                    (assoc-in [:nodes id] {:id id :pos pos})
                    (update-in [:roots] conj id)
                    (update-in [:leaves] conj id)
@@ -44,9 +54,11 @@
     [forest id]))
 
 (defn remove-node [forest id]
-  (let [child-ids (get-in forest [:nodes id :child-ids])
-        parent-id (get-in forest [:nodes id :parent-id])]
+  (let [node      (get-in forest [:nodes id])
+        child-ids (:child-ids node)
+        parent-id (:parent-id node)]
     (-> forest
+        (update-in [:grid] grid/rm-point (:pos node))
         ;; unset this node's parent, if it has one
         (#(if parent-id (unset-parent %1 id parent-id) %1))
         ;; unset this node's children, if it has any
@@ -88,15 +100,15 @@
        (map #(vector (:pos %) (:parent-pos %)))
        ))
 
-(def my-forest
-  (let [forest (new-forest)
-        [forest id0] (add-node forest [0 0])
-        [forest id1] (spawn-child forest id0 [1 1])
-        [forest id2] (spawn-child forest id0 [-1 -1])
-        [forest id3] (spawn-child forest id1 [2 2])
-        forest (remove-node forest id1)
-        forest (update-node-meta forest id0 #(assoc-in % [:foo] :bar))
-        ]
-    forest))
-
-(identity my-forest)
+;(def my-forest
+;  (let [forest (new-forest)
+;        [forest id0] (add-node forest [0 0])
+;        [forest id1] (spawn-child forest id0 [1 1])
+;        [forest id2] (spawn-child forest id0 [-1 -1])
+;        [forest id3] (spawn-child forest id1 [2 2])
+;        forest (remove-node forest id1)
+;        forest (update-node-meta forest id0 #(assoc-in % [:foo] :bar))
+;        ]
+;    forest))
+;
+;(identity my-forest)
