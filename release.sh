@@ -10,3 +10,5 @@ cp -r index.html css js out rel/$1/
 
 sed -i "s/~COMMIT/$(git rev-parse HEAD)/" rel/$1/index.html
 sed -i "s/~RELEASE/$1/" rel/$1/index.html
+
+git tag rel$1
