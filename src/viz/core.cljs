@@ -18,8 +18,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; initialization
 
-;; TODO drift the ghost's color over time. This includes color averages
-;; TODO store color on each node and draw that, not the ghost's
 ;; TODO move all code specific to drawing ghosts into the ghost package
 ;; TODO make two ghosts, one opposite the color of the other
 
@@ -35,6 +33,7 @@
 
 (defn- new-state []
   {:frame-rate frame-rate
+   :color-cycle-period 2
    :exit-wait-frames 40
    :tail-length 7
    :frame 0
@@ -45,7 +44,7 @@
    :grid-width 35 ; from the center
    :forest (forest/new-forest grid/isometric)
    :ghost (-> (ghost/new-ghost)
-              (assoc :color 0XFFFF0000)
+              (assoc :color (q/color 0 1 1))
               )
    })
 
@@ -54,11 +53,18 @@
         ghost       (ghost/add-active-node (:ghost state) id)]
     (assoc state :ghost ghost :forest forest)))
 
+(defn- frames-per-color-cycle [state]
+  (* (:color-cycle-period state) (:frame-rate state)))
+
 (defn setup []
+  (q/color-mode :hsb 10 1 1)
   (let [state (-> (new-state)
                   (new-active-node [10 10])
                   )]
     (q/frame-rate (:frame-rate state))
+    ;; use frame-rate as the range of possibly hue values, so we can cycle all
+    ;; colors in a second
+    (q/color-mode :hsb (frames-per-color-cycle state) 1 1)
     state))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -193,10 +199,12 @@
 (defn- update-node-meta [state id f]
   (update-in state [:forest] forest/update-node-meta id f))
 
-;(defn- ghost-set-nodes-color [state]
-;  (let [color (if (zero? (:dial state)) 0xFF000000 0xFFFF0000)]
-;    (reduce #(update-node-meta %1 %2 (fn [m] (assoc m :color color)))
-;            state (get-in state [:ghost :active-node-ids]))))
+(defn- ghost-set-active-nodes-color [state]
+  (let [color (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1)]
+    (reduce
+      (fn [state id] (update-node-meta state id #(assoc % :color color)))
+      state
+      (get-in state [:ghost :active-node-ids]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; update
@@ -212,6 +220,7 @@
     (-> state
         ;(set-dial)
         (ghost-incr poss-fn)
+        (ghost-set-active-nodes-color)
         (maybe-remove-roots)
         (update-in [:frame] inc)
         (maybe-exit)
@@ -231,7 +240,7 @@
 
 (defn- draw-node [state node active?]
   (let [pos (:pos node)
-        stroke (get-in state [:ghost :color])
+        stroke (get-in node [:meta :color])
         fill   (if active? stroke 0xFFFFFFFF)
         size   (:val (dial/scaled (:dial state) 0.25 0.45))
         ]
@@ -240,7 +249,9 @@
     (draw-ellipse state pos [size size])))
 
 (defn- draw-line [state node parent]
-  (let [color (get-in state [:ghost :color])
+  (let [node-color (get-in node [:meta :color])
+        parent-color (get-in node [:meta :color])
+        color (q/lerp-color node-color parent-color 0.5)
         weight (:val (dial/scaled (:dial state) -1 3))
         ]
     (q/stroke color)

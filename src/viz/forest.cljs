@@ -73,7 +73,7 @@
   (update-in forest [:nodes id :meta] f))
 
 (defn get-node-meta [forest id]
-  (get-in forest [:nodes id]))
+  (get-in forest [:nodes id :meta]))
 
 (defn get-node [forest id]
   (get-in forest [:nodes id]))
@@ -100,15 +100,8 @@
        (map #(vector (:pos %) (:parent-pos %)))
        ))
 
-;(def my-forest
-;  (let [forest (new-forest)
-;        [forest id0] (add-node forest [0 0])
-;        [forest id1] (spawn-child forest id0 [1 1])
-;        [forest id2] (spawn-child forest id0 [-1 -1])
-;        [forest id3] (spawn-child forest id1 [2 2])
-;        forest (remove-node forest id1)
-;        forest (update-node-meta forest id0 #(assoc-in % [:foo] :bar))
-;        ]
-;    forest))
-;
-;(identity my-forest)
+;(let [forest (new-forest grid/isometric)
+;      [forest id0] (add-node forest [0 0])
+;      forest (update-node-meta forest id0 #(assoc % :color :red))
+;      ]
+;  (print (get-node-meta forest id0)))

@@ -23,26 +23,29 @@
         <div class="container">
             <div class="row" style="margin-top: 10%; margin-bottom:1%;">
                 <div class="twelve column">
-                    <h1>1</h1>
+                    <h1>2</h1>
                     <p>
                     Using clojurescript and
-                    <a href="http://quil.info">quil</a>.
+                    <a href="http://quil.info">quil</a>, and extending
+                    <a href="1">1</a>.
                     </p>
                     <p>
-                    Any point can only be occupied by a single dot.</br>
-                    A line cannot intersect another line.</br>
-                    Every tick a point may spawn 0 or more adjacent points.
+                    The next spawn point of each active node is prioritized by
+                    distance from the center.</br>
+                    Nodes are spawned with a color attached. The "active" color
+                    being spawned is cycled over time.</br>
+                    The color of a line is the average color of the nodes it
+                    connects.</br>
                     </p>
                     <p>
-                    In this implementation adjacent points are chosen randomly,
-                    both in number and direction. The result is somewhere between
-                    Conway's Game of Life and white noise.
+                    The points can no longer just meander aimlessly as best they
+                    can. Instead they fight each other to reach the center.
+                    Ironically if a point does manage to reach the center it
+                    will very quickly die from having no space to move.
                     </p>
                     <p>
-                    This implementation is hella slow, most time is spent drawing
-                    the lines. This was optimized so that adjacent parallel lines
-                    are drawn in a single operation, but that produced negligible
-                    benefit.
+                    The resulting behavior is a constant churn, sometimes a
+                    spiral, sometimes waves crashing, and sometimes just chaos.
                     </p>
 
                     <!-- (#_#) -->
