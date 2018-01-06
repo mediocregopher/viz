@@ -7,7 +7,6 @@
             [viz.dial :as dial]
             [goog.string :as gstring]
             [goog.string.format]
-            ;[gil.core :as gil]
             ))
 
 (defn- debug [& args]
@@ -17,9 +16,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; initialization
-
-;; TODO move all code specific to drawing ghosts into the ghost package
-;; TODO make two ghosts, one opposite the color of the other
 
 (defn- window-partial [k]
   (int (* (aget js/document "documentElement" k) 0.95)))
@@ -31,36 +27,52 @@
 
 (def frame-rate 15)
 
-(defn- new-state []
-  {:frame-rate frame-rate
-   :color-cycle-period 2
-   :exit-wait-frames 40
-   :tail-length 7
-   :frame 0
-   :dial (dial/new-dial)
-   ; 0.86 is roughly the beat period of a human heart
-   :heartbeat-plot (dial/new-plot frame-rate 0.86 [[0.5 0.5] [0.7 0] [0.8 1]])
-   :gif-seconds 0
-   :grid-width 35 ; from the center
-   :forest (forest/new-forest grid/isometric)
-   :ghost (-> (ghost/new-ghost)
-              (assoc :color (q/color 0 1 1))
-              )
-   })
+(defn- mk-ghost [state ghost-def]
+  (let [[forest id] (forest/add-node (:forest state) (:start-pos ghost-def))
+        ghost       (ghost/add-active-node (ghost/new-ghost) id)
+        ]
+    [(assoc state :forest forest) (assoc ghost :ghost-def ghost-def)]))
 
-(defn new-active-node [state pos]
-  (let [[forest id] (forest/add-node (:forest state) pos)
-        ghost       (ghost/add-active-node (:ghost state) id)]
-    (assoc state :ghost ghost :forest forest)))
+(defn- mk-ghosts [state]
+  (let [[state ghosts] (reduce (fn [[state ghosts] ghost-def]
+                                    (let [[state ghost] (mk-ghost state ghost-def)]
+                                      [state (cons ghost ghosts)]))
+                               [state '()]
+                               (:ghost-defs state))]
+        (assoc state :ghosts ghosts)))
+
+(defn- new-state []
+  (-> {:frame-rate frame-rate
+       :color-cycle-period 2
+       :exit-wait-frames 40
+       :tail-length 7
+       :frame 0
+       :dial (dial/new-dial)
+       ; 0.86 is roughly the beat period of a human heart
+       :heartbeat-plot (dial/new-plot frame-rate 0.86 [[0.5 0.5] [0.7 0] [0.8 1]])
+       :grid-width 45 ; from the center
+       :forest (forest/new-forest grid/isometric)
+       :ghost-defs [{:start-pos [2 2]
+                     :color-fn (fn [state] (q/color 0 1 1))
+                     ;:color-fn (fn [state]
+                     ;            (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1))
+                     }
+                    {:start-pos [-2 -2]
+                     :color-fn (fn [state] (q/color (/ (frames-per-color-cycle state) 2) 1 1))
+                     ;:color-fn (fn [state]
+                     ;            (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1))
+                     }
+                    ]
+       }
+      (mk-ghosts)
+      ))
 
 (defn- frames-per-color-cycle [state]
   (* (:color-cycle-period state) (:frame-rate state)))
 
 (defn setup []
   (q/color-mode :hsb 10 1 1)
-  (let [state (-> (new-state)
-                  (new-active-node [10 10])
-                  )]
+  (let [state (new-state)]
     (q/frame-rate (:frame-rate state))
     ;; use frame-rate as the range of possibly hue values, so we can cycle all
     ;; colors in a second
@@ -180,104 +192,105 @@
         (take-inner-fn pos adj-poss-ordered)))
     ))
 
-;; ghost
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; update
+
+(defn- update-ghost-forest [state update-fn]
+  (let [[ghosts forest]
+        (reduce (fn [[ghosts forest] ghost]
+                  (let [[ghost forest] (update-fn ghost forest)]
+                    [(cons ghost ghosts) forest]))
+                ['() (:forest state)]
+                (:ghosts state))]
+    (assoc state :ghosts (reverse ghosts) :forest forest)))
 
 (defn- ghost-incr [state poss-fn]
-  (let [[ghost forest] (ghost/incr (:ghost state) (:forest state) poss-fn)]
-    (assoc state :ghost ghost :forest forest)))
+  (update-ghost-forest state #(ghost/incr %1 %2 poss-fn)))
+
+(defn rm-nodes [state node-ids]
+  (update-ghost-forest state (fn [ghost forest]
+                               [(reduce ghost/rm-active-node ghost node-ids)
+                                (reduce forest/remove-node forest node-ids)])))
 
 (defn- maybe-remove-roots [state]
-  (if (>= (:tail-length state) (:frame state)) state
-    (let [roots (forest/roots (:forest state))
-          root-ids (map :id roots)
-          ]
-      (-> state
-          (update-in [:ghost] #(reduce ghost/rm-active-node % root-ids))
-          (update-in [:forest] #(reduce forest/remove-node % root-ids))
-          ))))
+  (if (>= (:tail-length state) (:frame state))
+    state
+    (rm-nodes state (map :id (forest/roots (:forest state))))))
 
 (defn- update-node-meta [state id f]
   (update-in state [:forest] forest/update-node-meta id f))
 
-(defn- ghost-set-active-nodes-color [state]
-  (let [color (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1)]
-    (reduce
-      (fn [state id] (update-node-meta state id #(assoc % :color color)))
-      state
-      (get-in state [:ghost :active-node-ids]))))
+(defn- ghost-set-color [state]
+  (update-ghost-forest state (fn [ghost forest]
+                               (let [color ((get-in ghost [:ghost-def :color-fn]) state)]
+                                 [(assoc ghost :color color) forest]))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; update
-
-(defn- maybe-exit [state]
-  (if (empty? (get-in state [:ghost :active-node-ids]))
-    (if (zero? (:exit-wait-frames state)) (new-state)
-      (update-in state [:exit-wait-frames] dec))
-    state))
+;(defn- maybe-exit [state]
+;  (if (empty? (get-in state [:ghost :active-node-ids]))
+;    (if (zero? (:exit-wait-frames state)) (new-state)
+;      (update-in state [:exit-wait-frames] dec))
+;    state))
 
 (defn update-state [state]
   (let [poss-fn (mk-poss-fn state)]
     (-> state
         ;(set-dial)
+        (ghost-set-color)
         (ghost-incr poss-fn)
-        (ghost-set-active-nodes-color)
         (maybe-remove-roots)
         (update-in [:frame] inc)
-        (maybe-exit)
+        ;(maybe-exit)
         )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; draw
 
-(defn- draw-ellipse [state pos size] ; size is [w h]
-  (let [scaled-pos (scale state pos)
-        scaled-size (map int (scale state size))]
+(defn- draw-ellipse [pos size scale-fn] ; size is [w h]
+  (let [scaled-pos (scale-fn pos)
+        scaled-size (map int (scale-fn size))]
     (apply q/ellipse (concat scaled-pos scaled-size))))
 
 (defn- in-line? [& nodes]
   (apply = (map #(apply map - %1)
                 (partition 2 1 (map :pos nodes)))))
 
-(defn- draw-node [state node active?]
+(defn- draw-node [node active? scale-fn]
   (let [pos (:pos node)
         stroke (get-in node [:meta :color])
         fill   (if active? stroke 0xFFFFFFFF)
-        size   (:val (dial/scaled (:dial state) 0.25 0.45))
         ]
     (q/stroke stroke)
     (q/fill fill)
-    (draw-ellipse state pos [size size])))
+    (draw-ellipse pos [0.30 0.30] scale-fn)))
 
-(defn- draw-line [state node parent]
+(defn- draw-line [node parent scale-fn]
   (let [node-color (get-in node [:meta :color])
         parent-color (get-in node [:meta :color])
         color (q/lerp-color node-color parent-color 0.5)
-        weight (:val (dial/scaled (:dial state) -1 3))
         ]
     (q/stroke color)
-    (q/stroke-weight weight)
-    (apply q/line (map #(scale state %) (map :pos (list parent node))))))
+    (q/stroke-weight 1)
+    (apply q/line (map scale-fn (map :pos (list parent node))))))
 
-(defn draw-lines [state forest parent node]
+(defn- draw-lines [forest parent node scale-fn]
   "Draws the lines of all children leading from the node, recursively"
   (let [children (map #(forest/get-node forest %) (:child-ids node))]
 
     (if-not parent
-      (doseq [child children] (draw-lines state forest node child))
+      (doseq [child children] (draw-lines forest node child scale-fn))
       (let [in-line-child (some #(if (in-line? parent node %) %) children)
             ]
         (doseq [child children]
           (if (and in-line-child (= in-line-child child))
-            (draw-lines state forest parent child)
-            (draw-lines state forest node child)))
+            (draw-lines forest parent child scale-fn)
+            (draw-lines forest node child scale-fn)))
         (when-not in-line-child
-          (draw-line state node parent))
+          (draw-line node parent scale-fn))
         ))
 
     ; we also take the opportunity to draw the leaves
     (when (empty? children)
-      (draw-node state node false))
-
+      (draw-node node false scale-fn))
     ))
 
 (defn draw-dial [state dial posL posR]
@@ -295,28 +308,24 @@
   (q/background 0xFFFFFFFF)
   (q/with-translation [(/ (window-size 0) 2)
                        (/ (window-size 1) 2)]
-    (let [lines (forest/lines (:forest state))
-          leaves (forest/leaves (:forest state))
-          active (ghost/active-nodes (:ghost state) (:forest state))
-          roots (forest/roots (:forest state))
+
+    (let [scale-fn #(scale state %)
+          ghost (:ghost state)
+          forest (:forest state)
+          roots (forest/roots forest)
           ]
 
-      ;(q/stroke 0xFF000000)
       (doseq [root roots]
-        (draw-lines state (:forest state) nil root))
+        (draw-lines forest nil root scale-fn))
 
-      ;(q/stroke 0xFF000000)
-      ;(q/fill 0xFF000000)
-      (doseq [active-node active]
-        (draw-node state active-node true))
+      (doseq [ghost (:ghosts state)]
+        (doseq [active-node (map #(forest/get-node forest %)
+                                 (:active-node-ids ghost))]
+          (draw-node active-node true scale-fn)))
+
       ))
 
     ;(draw-dial state (:dial state) [30 30] [100 30])
-
-    ;(when-not (zero? (:gif-seconds state))
-    ;  (let [anim-frames (* (:gif-seconds state) (:frame-rate state))]
-    ;    (gil/save-animation "quil.gif" anim-frames 0)
-    ;    (when (> (:frame state) anim-frames) (q/exit))))
 
     ;(q/text (clojure.string/join
     ;          "\n"

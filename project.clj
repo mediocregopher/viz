@@ -6,7 +6,6 @@
 
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [quil "2.6.0"]
-                 ;[gil "1.0.0-SNAPSHOT"]
                  [org.clojure/clojurescript "1.9.473"]
                  ;[lein-cljsbuild "1.1.6"]
                  ]
