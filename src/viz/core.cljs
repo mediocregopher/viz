@@ -51,7 +51,7 @@
        :forest (forest/new-forest grid/isometric)
        }
       (set-grid-size)
-      (add-ghost {:start-pos [-2 -2]
+      (add-ghost {:start-pos [-10 -10]
                   :color-fn (fn [state]
                               (let [frames-per-color-cycle
                                     (* (:color-cycle-period state) (:frame-rate state))]
@@ -93,12 +93,15 @@
 (defn- dist-from [pos1 pos2]
   (q/sqrt (dist-from-sqr pos1 pos2)))
 
-(defn take-adj-poss [adj-poss]
-  (if
-    (or (empty? adj-poss)
-          (< (rand) 0.15)) nil
+(defn take-adj-poss [grid-width pos adj-poss]
+  (let [dist-from-center (dist-from [0 0] pos)
+        width grid-width
+        dist-ratio (/ (- width dist-from-center) width)
+        ]
     (take
-      (max 1 (int (* (rand) (count adj-poss))))
+      (int (* (q/map-range (rand) 0 1 0.75 1)
+              dist-ratio
+              (count adj-poss)))
       adj-poss)))
 
 (defn- mk-poss-fn [state]
@@ -107,7 +110,7 @@
       (->> adj-poss
            (filter #(in-bounds? grid-size %))
            (sort-by #(dist-from-sqr % [0 0]))
-           (take-adj-poss)))))
+           (take-adj-poss (grid-size 0) pos)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; update
