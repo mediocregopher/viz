@@ -27,47 +27,39 @@
 
 (def window-half-size (apply vector (map #(float (/ %1 2)) window-size)))
 
-(def frame-rate 15)
+(defn- set-grid-size [state]
+  (let [h (int (* (window-size 1)
+                  (float (/ (:grid-width state) (window-size 0)))))]
+    (assoc state :grid-size [(:grid-width state) h])))
 
-(defn- mk-ghost [state ghost-def]
+(defn- add-ghost [state ghost-def]
   (let [[forest id] (forest/add-node (:forest state) (:start-pos ghost-def))
-        ghost       (ghost/add-active-node (ghost/new-ghost) id)
+        ghost       (-> (ghost/new-ghost)
+                        (ghost/add-active-node id)
+                        (assoc :ghost-def ghost-def))
         ]
-    [(assoc state :forest forest) (assoc ghost :ghost-def ghost-def)]))
-
-(defn- mk-ghosts [state]
-  (let [[state ghosts] (reduce (fn [[state ghosts] ghost-def]
-                                    (let [[state ghost] (mk-ghost state ghost-def)]
-                                      [state (cons ghost ghosts)]))
-                               [state '()]
-                               (:ghost-defs state))]
-        (assoc state :ghosts ghosts)))
+    (assoc state
+           :forest forest
+           :ghosts (cons ghost (:ghosts state)))))
 
 (defn- new-state []
-  (-> {:frame-rate frame-rate
+  (-> {:frame-rate 15
        :color-cycle-period 8
-       :exit-wait-frames 40
        :tail-length 7
        :frame 0
        :grid-width 45 ; from the center
        :forest (forest/new-forest grid/isometric)
-       :ghost-defs [;{:start-pos [2 2]
-                    ; :color-fn (fn [state] (q/color 0 1 1))
-                    ; ;:color-fn (fn [state]
-                    ; ;            (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1))
-                    ; }
-                    {:start-pos [-2 -2]
-                     :color-fn (fn [state]
-                                 (let [frames-per-color-cycle
-                                       (* (:color-cycle-period state) (:frame-rate state))]
-                                   (q/color
-                                     (/ (mod (:frame state) frames-per-color-cycle)
-                                        frames-per-color-cycle)
-                                     1 1)))
-                     }
-                    ]
        }
-      (mk-ghosts)
+      (set-grid-size)
+      (add-ghost {:start-pos [-2 -2]
+                  :color-fn (fn [state]
+                              (let [frames-per-color-cycle
+                                    (* (:color-cycle-period state) (:frame-rate state))]
+                                (q/color
+                                  (/ (mod (:frame state) frames-per-color-cycle)
+                                     frames-per-color-cycle)
+                                  1 1)))
+                  })
       ))
 
 (defn setup []
@@ -80,14 +72,9 @@
 (defn- curr-second [state]
   (float (/ (:frame state) (:frame-rate state))))
 
-(defn- grid-size [state]
-  (let [h (int (* (window-size 1)
-                  (float (/ (:grid-width state) (window-size 0)))))]
-             [(:grid-width state) h]))
-
-(defn- scale [state xy]
+(defn- scale [grid-size xy]
   (map-indexed #(* %2 (float (/ (window-half-size %1)
-                                ((grid-size state) %1)))) xy))
+                                (grid-size %1)))) xy))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; poss-fn
@@ -95,14 +82,10 @@
 (def bounds-buffer 1)
 
 (defn- in-bounds? [grid-size pos]
-  (let [[w h] (apply vector (map #(- % bounds-buffer) grid-size))
-        min-bound [(- w) (- h)]
-        max-bound [w h]
-        pos-k (keep-indexed #(let [mini (min-bound %1)
-                                   maxi (max-bound %1)]
-                               (when (and (>= %2 mini) (<= %2 maxi)) %2)) pos)]
-    (= (count pos) (count pos-k))))
-
+  (let [[w h] (apply vector (map #(- % bounds-buffer) grid-size))]
+    (every?
+      #(and (>= (% 1) (- (% 0))) (<= (% 1) (% 0)))
+      (map vector [w h] pos))))
 
 (defn- dist-from-sqr [pos1 pos2]
   (reduce + (map #(* % %) (map - pos1 pos2))))
@@ -119,7 +102,7 @@
       adj-poss)))
 
 (defn- mk-poss-fn [state]
-  (let [grid-size (grid-size state)]
+  (let [grid-size (:grid-size state)]
     (fn [pos adj-poss]
       (->> adj-poss
            (filter #(in-bounds? grid-size %))
@@ -229,10 +212,10 @@
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   (q/background 0xFFFFFFFF)
-  (q/with-translation [(/ (window-size 0) 2)
-                       (/ (window-size 1) 2)]
+  (q/with-translation window-half-size
 
-    (let [scale-fn #(scale state %)
+    (let [grid-size (:grid-size state)
+          scale-fn #(scale grid-size %)
           ghost (:ghost state)
           forest (:forest state)
           roots (forest/roots forest)
