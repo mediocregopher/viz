@@ -1,60 +1,9 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>viz (~RELEASE)</title>
-
-        <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet">
-        <link rel="stylesheet" href="css/normalize.css">
-        <link rel="stylesheet" href="css/skeleton.css">
-
-        <style type="text/css">
-            * {
-                font-family: 'Source Code Pro', monospace;
-            }
-            #viz {
-                //border: 1px solid grey;
-            }
-        </style>
-
-        <script src="js/main.js"></script>
+      <script src="js/main.js"></script>
     </head>
     <body>
-        <p align="center" style="margin-top:1%;"> <canvas id="viz"></canvas> </p>
-        <div class="container">
-            <div class="row" style="margin-top: 10%; margin-bottom:1%;">
-                <div class="twelve column">
-                    <h1>2</h1>
-                    <p>
-                    Using clojurescript and
-                    <a href="http://quil.info">quil</a>, and extending
-                    <a href="../1">1</a>.
-                    </p>
-                    <p>
-                    The next spawn point of each active node is prioritized by
-                    distance from the center.</br>
-                    Nodes are spawned with a color attached. The "active" color
-                    being spawned is cycled over time.</br>
-                    The color of a line is the average color of the nodes it
-                    connects.</br>
-                    </p>
-                    <p>
-                    The points can no longer just meander aimlessly as best they
-                    can. Instead they fight each other to reach the center.
-                    Ironically if a point does manage to reach the center it
-                    will very quickly die from having no space to move.
-                    </p>
-                    <p>
-                    The resulting behavior is a constant churn, sometimes a
-                    spiral, sometimes waves crashing, and sometimes just chaos.
-                    </p>
-
-                    <!-- (#_#) -->
-
-                    <p>
-                    git clone https://github.com/mediocregopher/viz.git</br>
-                    git checkout ~COMMIT
-                    </p>
-                </div>
-            </div>
+      <p align="center" style="margin-top:1%;"> <canvas id="viz"></canvas> </p>
     </body>
 </html>
