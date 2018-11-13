@@ -11,6 +11,7 @@
 
 (defn- debug [& args]
   (.log js/console (clojure.string/join " " (map str args))))
+(defn- observe [v] (debug v) v)
 
 (defn- positive [n] (if (> 0 n) (- n) n))
 
@@ -18,11 +19,12 @@
 ;; initialization
 
 (defn- window-partial [k]
-  (int (* (aget js/document "documentElement" k) 0.95)))
+  (int (aget js/document "documentElement" k)))
 
-(def window-size [ (min 1025 (window-partial "clientWidth"))
-                   (int (* (window-partial "clientHeight") 0.75))
-                   ])
+(def window-size
+  (let [w (int (min 1024 (window-partial "clientWidth")))]
+    [w (int (min (* w 0.75) (window-partial "clientHeight")))]))
+
 (def window-half-size (apply vector (map #(float (/ %1 2)) window-size)))
 
 (def frame-rate 15)
@@ -43,41 +45,34 @@
 
 (defn- new-state []
   (-> {:frame-rate frame-rate
-       :color-cycle-period 2
+       :color-cycle-period 8
        :exit-wait-frames 40
        :tail-length 7
        :frame 0
-       :dial (dial/new-dial)
-       ; 0.86 is roughly the beat period of a human heart
-       :heartbeat-plot (dial/new-plot frame-rate 0.86 [[0.5 0.5] [0.7 0] [0.8 1]])
        :grid-width 45 ; from the center
        :forest (forest/new-forest grid/isometric)
-       :ghost-defs [{:start-pos [2 2]
-                     :color-fn (fn [state] (q/color 0 1 1))
-                     ;:color-fn (fn [state]
-                     ;            (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1))
-                     }
+       :ghost-defs [;{:start-pos [2 2]
+                    ; :color-fn (fn [state] (q/color 0 1 1))
+                    ; ;:color-fn (fn [state]
+                    ; ;            (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1))
+                    ; }
                     {:start-pos [-2 -2]
-                     :color-fn (fn [state] (q/color (/ (frames-per-color-cycle state) 2) 1 1))
-                     ;:color-fn (fn [state]
-                     ;            (q/color (mod (:frame state) (frames-per-color-cycle state)) 1 1))
+                     :color-fn (fn [state]
+                                 (let [frames-per-color-cycle
+                                       (* (:color-cycle-period state) (:frame-rate state))]
+                                   (q/color
+                                     (/ (mod (:frame state) frames-per-color-cycle)
+                                        frames-per-color-cycle)
+                                     1 1)))
                      }
                     ]
        }
       (mk-ghosts)
       ))
 
-(defn- frames-per-color-cycle [state]
-  (* (:color-cycle-period state) (:frame-rate state)))
-
 (defn setup []
-  (q/color-mode :hsb 10 1 1)
-  (let [state (new-state)]
-    (q/frame-rate (:frame-rate state))
-    ;; use frame-rate as the range of possibly hue values, so we can cycle all
-    ;; colors in a second
-    (q/color-mode :hsb (frames-per-color-cycle state) 1 1)
-    state))
+  (q/color-mode :hsb 1 1 1)
+  (new-state))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; scaling and unit conversion related
@@ -94,10 +89,13 @@
   (map-indexed #(* %2 (float (/ (window-half-size %1)
                                 ((grid-size state) %1)))) xy))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; poss-fn
+
 (def bounds-buffer 1)
 
-(defn- in-bounds? [state pos]
-  (let [[w h] (apply vector (map #(- % bounds-buffer) (grid-size state)))
+(defn- in-bounds? [grid-size pos]
+  (let [[w h] (apply vector (map #(- % bounds-buffer) grid-size))
         min-bound [(- w) (- h)]
         max-bound [w h]
         pos-k (keep-indexed #(let [mini (min-bound %1)
@@ -105,17 +103,6 @@
                                (when (and (>= %2 mini) (<= %2 maxi)) %2)) pos)]
     (= (count pos) (count pos-k))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; dials
-
-(defn- ceil-one [x]
-  (if (> x 0) 1 0))
-
-(defn- set-dial [state]
-  (update-in state [:dial] dial/by-plot (:heartbeat-plot state) (:frame state)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; poss-fn
 
 (defn- dist-from-sqr [pos1 pos2]
   (reduce + (map #(* % %) (map - pos1 pos2))))
@@ -123,74 +110,21 @@
 (defn- dist-from [pos1 pos2]
   (q/sqrt (dist-from-sqr pos1 pos2)))
 
-(def order-adj-poss-fns
-  {:random (fn [state]
-             (fn [pos adj-poss] (shuffle adj-poss)))
-
-   :centered (fn [state]
-               (fn [pos adj-poss]
-                 (sort-by #(dist-from-sqr % [0 0]) adj-poss)))
-   })
-
-(defn- mk-order-adj-poss-fn [& ks]
-  (fn [state]
-    (let [fns (map #(% state)
-                   (map order-adj-poss-fns ks))
-          ]
-      (fn [pos adj-poss]
-        (reduce
-          (fn [inner-adj-poss next-fn] (next-fn pos inner-adj-poss))
-          adj-poss
-          fns))
-      )))
-
-(def take-adj-poss-fns
-  {:random (fn [state]
-             (fn [pos adj-poss]
-               (q/map-range (rand) 0 1 0.75 1)))
-   :dial (fn [state]
-           (fn [pos adj-poss]
-             (-> (:dial state)
-                 (dial/scaled -0.25 1.75)
-                 (:val)
-                 )))
-   :centered (fn [state]
-               (fn [pos adj-poss]
-                  (let [d (dist-from [0 0] pos)
-                        max-d (state :grid-width)
-                        norm-d (/ d max-d)
-                        ]
-                    (- 1 norm-d)
-                    )))
-   })
-
-(defn- mk-take-adj-poss-fn [& ks]
-  (fn [state]
-    (let [fns (map #(% state)
-                   (map take-adj-poss-fns ks))
-          ]
-      (fn [pos adj-poss]
-        (let [mults (map #(% pos adj-poss) fns)
-              mult (reduce * 1 mults)
-              to-take (int (* mult (count adj-poss)))
-              ]
-          (take to-take adj-poss)))
-      )))
-
-(def order-adj-poss-fn (mk-order-adj-poss-fn :centered))
-(def take-adj-poss-fn (mk-take-adj-poss-fn :centered :random))
+(defn take-adj-poss [adj-poss]
+  (if
+    (or (empty? adj-poss)
+          (< (rand) 0.15)) nil
+    (take
+      (max 1 (int (* (rand) (count adj-poss))))
+      adj-poss)))
 
 (defn- mk-poss-fn [state]
-  (let [order-inner-fn (order-adj-poss-fn state)
-        take-inner-fn (take-adj-poss-fn state)
-        ]
+  (let [grid-size (grid-size state)]
     (fn [pos adj-poss]
-      (let [adj-poss (filter #(in-bounds? state %) adj-poss)
-            adj-poss-ordered (order-inner-fn pos adj-poss)
-            to-take (take-inner-fn pos adj-poss)
-            ]
-        (take-inner-fn pos adj-poss-ordered)))
-    ))
+      (->> adj-poss
+           (filter #(in-bounds? grid-size %))
+           (sort-by #(dist-from-sqr % [0 0]))
+           (take-adj-poss)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; update
@@ -200,7 +134,7 @@
         (reduce (fn [[ghosts forest] ghost]
                   (let [[ghost forest] (update-fn ghost forest)]
                     [(cons ghost ghosts) forest]))
-                ['() (:forest state)]
+                [nil (:forest state)]
                 (:ghosts state))]
     (assoc state :ghosts (reverse ghosts) :forest forest)))
 
@@ -217,29 +151,18 @@
     state
     (rm-nodes state (map :id (forest/roots (:forest state))))))
 
-(defn- update-node-meta [state id f]
-  (update-in state [:forest] forest/update-node-meta id f))
-
 (defn- ghost-set-color [state]
   (update-ghost-forest state (fn [ghost forest]
                                (let [color ((get-in ghost [:ghost-def :color-fn]) state)]
                                  [(assoc ghost :color color) forest]))))
 
-;(defn- maybe-exit [state]
-;  (if (empty? (get-in state [:ghost :active-node-ids]))
-;    (if (zero? (:exit-wait-frames state)) (new-state)
-;      (update-in state [:exit-wait-frames] dec))
-;    state))
-
 (defn update-state [state]
   (let [poss-fn (mk-poss-fn state)]
     (-> state
-        ;(set-dial)
         (ghost-set-color)
         (ghost-incr poss-fn)
         (maybe-remove-roots)
         (update-in [:frame] inc)
-        ;(maybe-exit)
         )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
