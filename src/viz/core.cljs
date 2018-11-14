@@ -43,8 +43,9 @@
            :ghosts (cons ghost (:ghosts state)))))
 
 (defn- new-state []
-  (-> {:frame-rate 15
-       :color-cycle-period 8
+  (-> {:frame-rate 30
+       :color-cycle-period 1
+       :background-color 0xFFFFFFFF
        :tail-length 7
        :frame 0
        :grid-width 45 ; from the center
@@ -63,8 +64,11 @@
       ))
 
 (defn setup []
-  (q/color-mode :hsb 1 1 1)
-  (new-state))
+  (let [state (new-state)]
+    (q/color-mode :hsb 1 1 1)
+    (q/frame-rate (:frame-rate state))
+    (q/background (:background-color state))
+    state))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; scaling and unit conversion related
@@ -109,7 +113,8 @@
     (fn [pos adj-poss]
       (->> adj-poss
            (filter #(in-bounds? grid-size %))
-           (sort-by #(dist-from-sqr % [0 0]))
+           (shuffle)
+           ;(sort-by #(dist-from-sqr % [0 0]))
            (take-adj-poss (grid-size 0) pos)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -127,15 +132,11 @@
 (defn- ghost-incr [state poss-fn]
   (update-ghost-forest state #(ghost/incr %1 %2 poss-fn)))
 
-(defn rm-nodes [state node-ids]
-  (update-ghost-forest state (fn [ghost forest]
-                               [(reduce ghost/rm-active-node ghost node-ids)
-                                (reduce forest/remove-node forest node-ids)])))
-
-(defn- maybe-remove-roots [state]
-  (if (>= (:tail-length state) (:frame state))
-    state
-    (rm-nodes state (map :id (forest/roots (:forest state))))))
+(defn- rm-old-tails [state]
+  (if (>= (:tail-length state) (:frame state)) state
+    (let [node-ids (map :id (forest/roots (:forest state)))]
+      (update-in state [:forest]
+                 #(reduce forest/remove-node % node-ids)))))
 
 (defn- ghost-set-color [state]
   (update-ghost-forest state (fn [ghost forest]
@@ -145,9 +146,10 @@
 (defn update-state [state]
   (let [poss-fn (mk-poss-fn state)]
     (-> state
+        (assoc :delta-state {})
         (ghost-set-color)
+        (rm-old-tails)
         (ghost-incr poss-fn)
-        (maybe-remove-roots)
         (update-in [:frame] inc)
         )))
 
@@ -166,11 +168,10 @@
 (defn- draw-node [node active? scale-fn]
   (let [pos (:pos node)
         stroke (get-in node [:meta :color])
-        fill   (if active? stroke 0xFFFFFFFF)
         ]
     (q/stroke stroke)
-    (q/fill fill)
-    (draw-ellipse pos [0.30 0.30] scale-fn)))
+    (q/fill stroke)
+    (draw-ellipse pos [1 1] scale-fn)))
 
 (defn- draw-line [node parent scale-fn]
   (let [node-color (get-in node [:meta :color])
@@ -181,26 +182,11 @@
     (q/stroke-weight 1)
     (apply q/line (map scale-fn (map :pos (list parent node))))))
 
-(defn- draw-lines [forest parent node scale-fn]
+(defn- draw-tree [forest parent node scale-fn]
   "Draws the lines of all children leading from the node, recursively"
+  (draw-node node false scale-fn)
   (let [children (map #(forest/get-node forest %) (:child-ids node))]
-
-    (if-not parent
-      (doseq [child children] (draw-lines forest node child scale-fn))
-      (let [in-line-child (some #(if (in-line? parent node %) %) children)
-            ]
-        (doseq [child children]
-          (if (and in-line-child (= in-line-child child))
-            (draw-lines forest parent child scale-fn)
-            (draw-lines forest node child scale-fn)))
-        (when-not in-line-child
-          (draw-line node parent scale-fn))
-        ))
-
-    ; we also take the opportunity to draw the leaves
-    (when (empty? children)
-      (draw-node node false scale-fn))
-    ))
+    (doseq [child children] (draw-tree forest node child scale-fn))))
 
 (defn draw-dial [state dial posL posR]
   (let [dial-norm (q/norm (:val dial) (:min dial) (:max dial))
@@ -214,7 +200,7 @@
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
-  (q/background 0xFFFFFFFF)
+  (q/background (:background-color state))
   (q/with-translation window-half-size
 
     (let [grid-size (:grid-size state)
@@ -225,7 +211,7 @@
           ]
 
       (doseq [root roots]
-        (draw-lines forest nil root scale-fn))
+        (draw-tree forest nil root scale-fn))
 
       (doseq [ghost (:ghosts state)]
         (doseq [active-node (map #(forest/get-node forest %)
