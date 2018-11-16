@@ -39,14 +39,14 @@
 (defn node-at-pos? [forest pos]
   (boolean (some #(= pos (:pos %)) (vals (:nodes forest)))))
 
-(defn empty-adjacent-points [forest pos]
-  (grid/empty-adjacent-points (:grid forest) pos))
+(defn empty-adj-points [forest pos]
+  (grid/empty-adj-points (:grid forest) pos))
 
-(defn add-node [forest pos]
+(defn add-node [forest pos color]
   (let [[forest id] (new-id forest)
         forest (-> forest
                    (update-in [:grid] grid/add-point pos)
-                   (assoc-in [:nodes id] {:id id :pos pos})
+                   (assoc-in [:nodes id] {:id id :pos pos :meta {:color color}})
                    (update-in [:roots] conj id)
                    (update-in [:leaves] conj id)
                    )
@@ -78,8 +78,8 @@
 (defn get-node [forest id]
   (get-in forest [:nodes id]))
 
-(defn spawn-child [forest parent-id pos]
-  (let [[forest id] (add-node forest pos)
+(defn spawn-child [forest parent-id pos color]
+  (let [[forest id] (add-node forest pos color)
         forest (-> forest
                    (set-parent id parent-id)
                    )

@@ -33,7 +33,8 @@
     (assoc state :grid-size [(:grid-width state) h])))
 
 (defn- add-ghost [state ghost-def]
-  (let [[forest id] (forest/add-node (:forest state) (:start-pos ghost-def))
+  (let [[forest id] (forest/add-node (:forest state) (:start-pos ghost-def)
+                                     ((:color-fn ghost-def) state))
         ghost       (-> (ghost/new-ghost)
                         (ghost/add-active-node id)
                         (assoc :ghost-def ghost-def))
@@ -121,6 +122,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; update
 
+(defn color-fn [adj-nodes]
+  (q/color (+ (q/map-range (rand) 0 1 -0.1 0.1)
+              (/ (reduce + (map #(get-in [:meta :color 0] %) adj-nodes))
+                 (count adj-nodes)))
+           1 1))
+
 (defn- update-ghost-forest [state update-fn]
   (let [[ghosts forest]
         (reduce (fn [[ghosts forest] ghost]
@@ -130,8 +137,9 @@
                 (:ghosts state))]
     (assoc state :ghosts (reverse ghosts) :forest forest)))
 
-(defn- ghost-incr [state poss-fn]
-  (let [state (update-ghost-forest state #(ghost/incr %1 %2 poss-fn))
+(defn- ghost-incr [state]
+  (let [poss-fn (mk-poss-fn state)
+        state (update-ghost-forest state #(ghost/incr %1 %2 poss-fn))
         forest (:forest state)
         new-nodes (reduce (fn [new-nodes id]
                             (conj new-nodes (forest/get-node forest id)))
@@ -152,14 +160,13 @@
                                  [(assoc ghost :color color) forest]))))
 
 (defn update-state [state]
-  (let [poss-fn (mk-poss-fn state)]
-    (-> state
-        (assoc :delta-state {})
-        (ghost-set-color)
-        (rm-old-tails)
-        (ghost-incr poss-fn)
-        (update-in [:frame] inc)
-        )))
+  (-> state
+      (assoc :delta-state {})
+      (ghost-set-color)
+      (rm-old-tails)
+      (ghost-incr)
+      (update-in [:frame] inc)
+      ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; draw
