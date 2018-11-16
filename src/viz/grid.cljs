@@ -29,9 +29,3 @@
 
 (defn adj-points [grid point]
   (map #(map + %1 point) (:grid-def grid)))
-
-(defn populated-adj-points [grid point]
-  (filter (:points grid) (adj-points grid point)))
-
-(defn empty-adj-points [grid point]
-  (remove (:points grid) (adj-points grid point)))

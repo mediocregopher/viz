@@ -28,8 +28,11 @@
         (#(if prev-parent-pos (unset-parent %1 pos prev-parent-pos) %1))
         )))
 
-(defn empty-adj-points [forest pos]
-  (grid/empty-adj-points (:grid forest) pos))
+(defn adj-nodes [forest pos]
+  (keep #(get-in forest [:nodes %]) (grid/adj-points (:grid forest) pos)))
+
+(defn adj-empty-poss [forest pos]
+  (remove #(get-in forest [:nodes %]) (grid/adj-points (:grid forest) pos)))
 
 (defn add-node [forest pos node]
   (-> forest

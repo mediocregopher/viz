@@ -7,23 +7,24 @@
 
 (defn new-ghost []
   {:active-node-poss #{}
-   :color 0xFF000000
    })
 
 (defn add-active-node [ghost pos]
   (update-in ghost [:active-node-poss] conj pos))
 
-(defn- gen-new-poss [forest poss-fn pos]
-  (poss-fn pos (forest/empty-adj-points forest pos)))
+(defn- gen-poss-colors [forest pos poss-fn color-fn]
+  (let [adj-poss (poss-fn pos (forest/adj-empty-poss forest pos))]
+    (map (fn [adj-pos adj-adj-nodes] [adj-pos (color-fn adj-adj-nodes)])
+         adj-poss (map #(forest/adj-nodes forest %) adj-poss))))
 
-(defn incr [ghost forest poss-fn]
+(defn incr [ghost forest poss-fn color-fn]
   (let [new-nodes
-        (into {} (mapcat (fn [pos]
-                           (map #(vector % [pos {:color (:color ghost)}])
-                                (gen-new-poss forest poss-fn pos)))
-                         (:active-node-poss ghost)))
-        ]
-    [(assoc ghost :active-node-poss (keys new-nodes))
+        (mapcat (fn [parent-pos]
+                  (map (fn [[pos color]]
+                         [pos [parent-pos {:color color}]])
+                       (gen-poss-colors forest parent-pos poss-fn color-fn)))
+                (:active-node-poss ghost))]
+    [(assoc ghost :active-node-poss (map first new-nodes))
      (reduce (fn [forest [pos [parent-pos node]]]
                (forest/spawn-child forest parent-pos pos node))
              forest new-nodes)]))

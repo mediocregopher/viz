@@ -33,7 +33,7 @@
 (defn- add-ghost [state ghost-def]
   (let [forest (forest/add-node (:forest state)
                                 (:start-pos ghost-def)
-                                {:color ((:color-fn ghost-def) state)})
+                                {:color (q/color 1 1 1)})
         ghost       (-> (ghost/new-ghost)
                         (ghost/add-active-node (:start-pos ghost-def))
                         (assoc :ghost-def ghost-def))
@@ -43,24 +43,15 @@
            :ghosts (cons ghost (:ghosts state)))))
 
 (defn- new-state []
-  (-> {:frame-rate 30
-       :color-cycle-period 3
+  (-> {:frame-rate 15
        :background-color 0xFFFFFFFF
-       :tail-length 7
+       :tail-length 15
        :frame 0
        :grid-width 100 ; from the center
        :forest (forest/new-forest grid/isometric)
        }
       (set-grid-size)
-      (add-ghost {:start-pos [-1 -1]
-                  :color-fn (fn [state]
-                              (let [frames-per-color-cycle
-                                    (* (:color-cycle-period state) (:frame-rate state))]
-                                (q/color
-                                  (/ (mod (:frame state) frames-per-color-cycle)
-                                     frames-per-color-cycle)
-                                  1 1)))
-                  })
+      (add-ghost {:start-pos [-1 -1]})
       ))
 
 (defn setup []
@@ -106,6 +97,7 @@
     (take
       (int (* (q/map-range (rand) 0 1 0.1 1)
               dist-ratio
+              1.25 ; multiplier to keep the dist-ratio from being too strong
               (count adj-poss)))
       adj-poss)))
 
@@ -122,10 +114,14 @@
 ;; update
 
 (defn color-fn [adj-nodes]
-  (q/color (+ (q/map-range (rand) 0 1 -0.1 0.1)
-              (/ (reduce + (map #(get-in [:color 0] %) adj-nodes))
-                 (count adj-nodes)))
-           1 1))
+  (if-not (empty? adj-nodes)
+    (let [avg-hue (q/hue (reduce #(q/blend-color %1 %2 :blend)
+                               (map :color adj-nodes)))
+          new-hue (+ avg-hue (q/map-range (rand) 0 1 -0.1 0.1))]
+      (if (< new-hue 0)
+        (q/color (inc new-hue) 1 1)
+        (q/color new-hue 1 1)))
+    (q/color 1 1 1)))
 
 (defn- update-ghost-forest [state update-fn]
   (let [[ghosts forest]
@@ -138,7 +134,7 @@
 
 (defn- ghost-incr [state]
   (let [poss-fn (mk-poss-fn state)
-        state (update-ghost-forest state #(ghost/incr %1 %2 poss-fn))
+        state (update-ghost-forest state #(ghost/incr %1 %2 poss-fn color-fn))
         forest (:forest state)
         new-nodes (reduce #(assoc %1 %2 (forest/get-node forest %2)) {}
                           (mapcat :active-node-poss (:ghosts state)))]
@@ -151,15 +147,9 @@
           (update-in [:forest] #(reduce forest/remove-node % (keys nodes)))
           (assoc-in [:delta-state :rm-nodes] nodes)))))
 
-(defn- ghost-set-color [state]
-  (update-ghost-forest state (fn [ghost forest]
-                               (let [color ((get-in ghost [:ghost-def :color-fn]) state)]
-                                 [(assoc ghost :color color) forest]))))
-
 (defn update-state [state]
   (-> state
       (assoc :delta-state {})
-      (ghost-set-color)
       (rm-old-tails)
       (ghost-incr)
       (update-in [:frame] inc)
