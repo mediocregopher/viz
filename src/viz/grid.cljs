@@ -18,6 +18,9 @@
   { :grid-def grid-def
     :points   #{} })
 
+(defn- debug [& args]
+  (.log js/console (clojure.string/join " " (map str args))))
+
 (defn add-point [grid point]
   (update-in grid [:points] conj point))
 

@@ -6,102 +6,65 @@
   {:grid (grid/new-grid grid-def)
    :nodes {}
    :roots #{}
-   :leaves #{}
-   :next-id 0})
+   :leaves #{}})
 
-(defn- new-id [forest]
-  (let [id (:next-id forest)]
-    [(assoc forest :next-id (inc id))
-     id]))
-
-(defn- unset-parent [forest id parent-id]
+(defn- unset-parent [forest pos parent-pos]
   (-> forest
-      (update-in [:nodes id] dissoc :parent-id :parent-pos)
-      (update-in [:nodes parent-id :child-ids] disj id)
-      (update-in [:roots] conj id)
-      (update-in [:leaves] conj parent-id)
+      (update-in [:nodes pos] dissoc :parent)
+      (update-in [:nodes parent-pos :children] disj pos)
+      (update-in [:roots] conj pos)
+      (#(if (empty? (get-in % [:nodes parent-pos :children]))
+          (update-in % [:leaves] conj parent-pos) %))
       ))
 
-(defn- set-parent [forest id parent-id]
-  (let [parent-pos (get-in forest [:nodes parent-id :pos])
-        prev-parent-id (get-in forest [:nodes id :parent-id])
-        ]
+(defn- set-parent [forest pos parent-pos]
+  (let [prev-parent-pos (get-in forest [:nodes pos :parent])]
     (-> forest
-        (assoc-in [:nodes id :parent-id] parent-id)
-        (assoc-in [:nodes id :parent-pos] parent-pos)
-        (update-in [:nodes parent-id :child-ids] #(if %1 (conj %1 id) #{id}))
-        (update-in [:roots] disj id)
-        (update-in [:leaves] disj parent-id)
+        (assoc-in [:nodes pos :parent] parent-pos)
+        (update-in [:nodes parent-pos :children] #(if %1 (conj %1 pos) #{pos}))
+        (update-in [:roots] disj pos)
+        (update-in [:leaves] disj parent-pos)
         ;; If there was a previous parent of the child, unset that shit
-        (#(if prev-parent-id (unset-parent %1 id prev-parent-id) %1))
+        (#(if prev-parent-pos (unset-parent %1 pos prev-parent-pos) %1))
         )))
-
-(defn node-at-pos? [forest pos]
-  (boolean (some #(= pos (:pos %)) (vals (:nodes forest)))))
 
 (defn empty-adj-points [forest pos]
   (grid/empty-adj-points (:grid forest) pos))
 
-(defn add-node [forest pos color]
-  (let [[forest id] (new-id forest)
-        forest (-> forest
-                   (update-in [:grid] grid/add-point pos)
-                   (assoc-in [:nodes id] {:id id :pos pos :meta {:color color}})
-                   (update-in [:roots] conj id)
-                   (update-in [:leaves] conj id)
-                   )
-        ]
-    [forest id]))
+(defn add-node [forest pos node]
+  (-> forest
+      (update-in [:grid] grid/add-point pos)
+      (assoc-in [:nodes pos] node)
+      (update-in [:roots] conj pos)
+      (update-in [:leaves] conj pos)
+      ))
 
-(defn remove-node [forest id]
-  (let [node      (get-in forest [:nodes id])
-        child-ids (:child-ids node)
-        parent-id (:parent-id node)]
+(defn remove-node [forest pos]
+  (let [node      (get-in forest [:nodes pos])
+        children (:children node)
+        parent-pos (:parent node)]
     (-> forest
-        (update-in [:grid] grid/rm-point (:pos node))
+        (update-in [:grid] grid/rm-point pos)
         ;; unset this node's parent, if it has one
-        (#(if parent-id (unset-parent %1 id parent-id) %1))
+        (#(if parent-pos (unset-parent %1 pos parent-pos) %1))
         ;; unset this node's children, if it has any
-        ((fn [forest] (reduce #(unset-parent %1 %2 id) forest child-ids)))
+        ((fn [forest] (reduce #(unset-parent %1 %2 pos) forest children)))
         ;; remove from all top-level sets
-        (update-in [:nodes] dissoc id)
-        (update-in [:roots] disj id)
-        (update-in [:leaves] disj id)
+        (update-in [:nodes] dissoc pos)
+        (update-in [:roots] disj pos)
+        (update-in [:leaves] disj pos)
         )))
 
-(defn update-node-meta [forest id f]
-  (update-in forest [:nodes id :meta] f))
+(defn get-node [forest pos]
+  (get-in forest [:nodes pos]))
 
-(defn get-node-meta [forest id]
-  (get-in forest [:nodes id :meta]))
+(defn spawn-child [forest parent-pos pos node]
+  (-> forest
+      (add-node pos node)
+      (set-parent pos parent-pos)))
 
-(defn get-node [forest id]
-  (get-in forest [:nodes id]))
+(defn roots [forest] (-> forest :nodes (select-keys (:roots forest))))
+(defn root? [node] (not (boolean (:parent node))))
 
-(defn spawn-child [forest parent-id pos color]
-  (let [[forest id] (add-node forest pos color)
-        forest (-> forest
-                   (set-parent id parent-id)
-                   )
-        ]
-    [forest id]))
-
-(defn roots [forest] (-> forest :nodes (select-keys (:roots forest)) (vals)))
-(defn root? [node] (not (boolean (:parent-id node))))
-
-(defn leaves [forest] (-> forest :nodes (select-keys (:leaves forest)) (vals)))
-(defn leaf? [node] (empty? (:child-ids node)))
-
-(defn lines [forest]
-  (->> forest
-       (:nodes)
-       (vals)
-       (remove #(empty? (:parent-pos %)))
-       (map #(vector (:pos %) (:parent-pos %)))
-       ))
-
-;(let [forest (new-forest grid/isometric)
-;      [forest id0] (add-node forest [0 0])
-;      forest (update-node-meta forest id0 #(assoc % :color :red))
-;      ]
-;  (print (get-node-meta forest id0)))
+(defn leaves [forest] (-> forest :nodes (select-keys (:leaves forest))))
+(defn leaf? [node] (empty? (:children node)))

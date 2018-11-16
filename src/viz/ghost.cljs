@@ -6,43 +6,24 @@
             clojure.set))
 
 (defn new-ghost []
-  {:active-node-ids #{}
+  {:active-node-poss #{}
    :color 0xFF000000
    })
 
-(defn add-active-node [ghost id]
-  (update-in ghost [:active-node-ids] conj id))
+(defn add-active-node [ghost pos]
+  (update-in ghost [:active-node-poss] conj pos))
 
-(defn rm-active-node [ghost id]
-  (update-in ghost [:active-node-ids] disj id))
-
-
-(defn- gen-new-poss [forest poss-fn id]
-  "generates new positions branching from the given node"
-  (let [pos (:pos (forest/get-node forest id))
-        adj-poss (forest/empty-adj-points forest pos)
-        ]
-    (poss-fn pos adj-poss)))
+(defn- gen-new-poss [forest poss-fn pos]
+  (poss-fn pos (forest/empty-adj-points forest pos)))
 
 (defn incr [ghost forest poss-fn]
-  (let [active-node-ids (:active-node-ids ghost)
-        [forest new-ids]
-        (reduce (fn [[forest new-ids] [pos node-def]]
-                  (let [[forest new-id]
-                        (forest/spawn-child forest
-                                            (:parent node-def)
-                                            pos
-                                            (:color node-def))]
-                    [forest (conj new-ids new-id)]))
-                [forest #{}]
-                (into {}
-                      (mapcat (fn [id]
-                                (map #(vector % {:parent id
-                                                 :color (:color ghost)})
-                                     (gen-new-poss forest poss-fn id)))
-                              active-node-ids)))
+  (let [new-nodes
+        (into {} (mapcat (fn [pos]
+                           (map #(vector % [pos {:color (:color ghost)}])
+                                (gen-new-poss forest poss-fn pos)))
+                         (:active-node-poss ghost)))
         ]
-    [(assoc ghost :active-node-ids new-ids) forest]))
-
-(defn- eg-poss-fn [pos adj-poss]
-  (take 2 (random-sample 0.6 adj-poss)))
+    [(assoc ghost :active-node-poss (keys new-nodes))
+     (reduce (fn [forest [pos [parent-pos node]]]
+               (forest/spawn-child forest parent-pos pos node))
+             forest new-nodes)]))

@@ -13,8 +13,6 @@
   (.log js/console (clojure.string/join " " (map str args))))
 (defn- observe [v] (debug v) v)
 
-(defn- positive [n] (if (> 0 n) (- n) n))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; initialization
 
@@ -33,10 +31,11 @@
     (assoc state :grid-size [(:grid-width state) h])))
 
 (defn- add-ghost [state ghost-def]
-  (let [[forest id] (forest/add-node (:forest state) (:start-pos ghost-def)
-                                     ((:color-fn ghost-def) state))
+  (let [forest (forest/add-node (:forest state)
+                                (:start-pos ghost-def)
+                                {:color ((:color-fn ghost-def) state)})
         ghost       (-> (ghost/new-ghost)
-                        (ghost/add-active-node id)
+                        (ghost/add-active-node (:start-pos ghost-def))
                         (assoc :ghost-def ghost-def))
         ]
     (assoc state
@@ -100,9 +99,9 @@
   (q/sqrt (dist-from-sqr pos1 pos2)))
 
 (defn take-adj-poss [grid-width pos adj-poss]
-  (let [dist-from-center (dist-from-sqr [0 0] pos)
-        width (* grid-width grid-width)
-        dist-ratio (/ (- width dist-from-center) width)
+  (let [dist-from-center-sqr (dist-from-sqr [0 0] pos)
+        width-sqr (* grid-width grid-width)
+        dist-ratio (/ (- width-sqr dist-from-center-sqr) width-sqr)
         ]
     (take
       (int (* (q/map-range (rand) 0 1 0.1 1)
@@ -124,7 +123,7 @@
 
 (defn color-fn [adj-nodes]
   (q/color (+ (q/map-range (rand) 0 1 -0.1 0.1)
-              (/ (reduce + (map #(get-in [:meta :color 0] %) adj-nodes))
+              (/ (reduce + (map #(get-in [:color 0] %) adj-nodes))
                  (count adj-nodes)))
            1 1))
 
@@ -141,17 +140,15 @@
   (let [poss-fn (mk-poss-fn state)
         state (update-ghost-forest state #(ghost/incr %1 %2 poss-fn))
         forest (:forest state)
-        new-nodes (reduce (fn [new-nodes id]
-                            (conj new-nodes (forest/get-node forest id)))
-                          #{} (apply concat (map :active-node-ids (:ghosts state))))]
+        new-nodes (reduce #(assoc %1 %2 (forest/get-node forest %2)) {}
+                          (mapcat :active-node-poss (:ghosts state)))]
     (assoc-in state [:delta-state :add-nodes] new-nodes)))
 
 (defn- rm-old-tails [state]
   (if (>= (:tail-length state) (:frame state)) state
-    (let [nodes (forest/roots (:forest state))
-          node-ids (map :id nodes)]
+    (let [nodes (forest/roots (:forest state))]
       (-> state
-          (update-in [:forest] #(reduce forest/remove-node % node-ids))
+          (update-in [:forest] #(reduce forest/remove-node % (keys nodes)))
           (assoc-in [:delta-state :rm-nodes] nodes)))))
 
 (defn- ghost-set-color [state]
@@ -176,19 +173,16 @@
         scaled-size (map int (scale-fn size))]
     (apply q/ellipse (concat scaled-pos scaled-size))))
 
-(defn- draw-node [node scale-fn]
-  (let [pos (:pos node)
-        stroke (get-in node [:meta :color])
-        ]
+(defn- draw-node [pos node scale-fn]
+  (let [stroke (get-in node [:color])]
     (q/stroke stroke)
     (q/fill stroke)
     (draw-ellipse pos [1 1] scale-fn)))
 
-(defn- clear-node [node bg-color scale-fn]
-  (let [pos (:pos node)]
-    (q/stroke bg-color)
-    (q/fill bg-color)
-    (draw-ellipse pos [1.5 1.5] scale-fn)))
+(defn- clear-node [pos bg-color scale-fn]
+  (q/stroke bg-color)
+  (q/fill bg-color)
+  (draw-ellipse pos [1.5 1.5] scale-fn))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
@@ -198,11 +192,11 @@
           scale-fn #(scale grid-size %)
           ]
 
-      (doseq [node (get-in state [:delta-state :rm-nodes])]
-        (clear-node node (:background-color state) scale-fn))
+      (doseq [[pos _] (get-in state [:delta-state :rm-nodes])]
+        (clear-node pos (:background-color state) scale-fn))
 
-      (doseq [node (get-in state [:delta-state :add-nodes])]
-        (draw-node node scale-fn))
+      (doseq [[pos node] (get-in state [:delta-state :add-nodes])]
+        (draw-node pos node scale-fn))
 
       ))
   )
