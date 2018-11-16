@@ -44,15 +44,15 @@
 
 (defn- new-state []
   (-> {:frame-rate 30
-       :color-cycle-period 1
+       :color-cycle-period 3
        :background-color 0xFFFFFFFF
        :tail-length 7
        :frame 0
-       :grid-width 45 ; from the center
+       :grid-width 100 ; from the center
        :forest (forest/new-forest grid/isometric)
        }
       (set-grid-size)
-      (add-ghost {:start-pos [-10 -10]
+      (add-ghost {:start-pos [-1 -1]
                   :color-fn (fn [state]
                               (let [frames-per-color-cycle
                                     (* (:color-cycle-period state) (:frame-rate state))]
@@ -65,6 +65,7 @@
 
 (defn setup []
   (let [state (new-state)]
+    (q/smooth 0)
     (q/color-mode :hsb 1 1 1)
     (q/frame-rate (:frame-rate state))
     (q/background (:background-color state))
@@ -98,12 +99,12 @@
   (q/sqrt (dist-from-sqr pos1 pos2)))
 
 (defn take-adj-poss [grid-width pos adj-poss]
-  (let [dist-from-center (dist-from [0 0] pos)
-        width grid-width
+  (let [dist-from-center (dist-from-sqr [0 0] pos)
+        width (* grid-width grid-width)
         dist-ratio (/ (- width dist-from-center) width)
         ]
     (take
-      (int (* (q/map-range (rand) 0 1 0.75 1)
+      (int (* (q/map-range (rand) 0 1 0.1 1)
               dist-ratio
               (count adj-poss)))
       adj-poss)))
@@ -130,13 +131,20 @@
     (assoc state :ghosts (reverse ghosts) :forest forest)))
 
 (defn- ghost-incr [state poss-fn]
-  (update-ghost-forest state #(ghost/incr %1 %2 poss-fn)))
+  (let [state (update-ghost-forest state #(ghost/incr %1 %2 poss-fn))
+        forest (:forest state)
+        new-nodes (reduce (fn [new-nodes id]
+                            (conj new-nodes (forest/get-node forest id)))
+                          #{} (apply concat (map :active-node-ids (:ghosts state))))]
+    (assoc-in state [:delta-state :add-nodes] new-nodes)))
 
 (defn- rm-old-tails [state]
   (if (>= (:tail-length state) (:frame state)) state
-    (let [node-ids (map :id (forest/roots (:forest state)))]
-      (update-in state [:forest]
-                 #(reduce forest/remove-node % node-ids)))))
+    (let [nodes (forest/roots (:forest state))
+          node-ids (map :id nodes)]
+      (-> state
+          (update-in [:forest] #(reduce forest/remove-node % node-ids))
+          (assoc-in [:delta-state :rm-nodes] nodes)))))
 
 (defn- ghost-set-color [state]
   (update-ghost-forest state (fn [ghost forest]
@@ -161,11 +169,7 @@
         scaled-size (map int (scale-fn size))]
     (apply q/ellipse (concat scaled-pos scaled-size))))
 
-(defn- in-line? [& nodes]
-  (apply = (map #(apply map - %1)
-                (partition 2 1 (map :pos nodes)))))
-
-(defn- draw-node [node active? scale-fn]
+(defn- draw-node [node scale-fn]
   (let [pos (:pos node)
         stroke (get-in node [:meta :color])
         ]
@@ -173,62 +177,27 @@
     (q/fill stroke)
     (draw-ellipse pos [1 1] scale-fn)))
 
-(defn- draw-line [node parent scale-fn]
-  (let [node-color (get-in node [:meta :color])
-        parent-color (get-in node [:meta :color])
-        color (q/lerp-color node-color parent-color 0.5)
-        ]
-    (q/stroke color)
-    (q/stroke-weight 1)
-    (apply q/line (map scale-fn (map :pos (list parent node))))))
-
-(defn- draw-tree [forest parent node scale-fn]
-  "Draws the lines of all children leading from the node, recursively"
-  (draw-node node false scale-fn)
-  (let [children (map #(forest/get-node forest %) (:child-ids node))]
-    (doseq [child children] (draw-tree forest node child scale-fn))))
-
-(defn draw-dial [state dial posL posR]
-  (let [dial-norm (q/norm (:val dial) (:min dial) (:max dial))
-        dial-pos (map #(q/lerp %1 %2 dial-norm) posL posR)]
-    (q/stroke 0xFF000000)
-    (q/stroke-weight 1)
-    (q/fill   0xFF000000)
-    (apply q/line (concat posL posR))
-    (apply q/ellipse (concat dial-pos [5 5]))
-    ))
+(defn- clear-node [node bg-color scale-fn]
+  (let [pos (:pos node)]
+    (q/stroke bg-color)
+    (q/fill bg-color)
+    (draw-ellipse pos [1.5 1.5] scale-fn)))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
-  (q/background (:background-color state))
   (q/with-translation window-half-size
 
     (let [grid-size (:grid-size state)
           scale-fn #(scale grid-size %)
-          ghost (:ghost state)
-          forest (:forest state)
-          roots (forest/roots forest)
           ]
 
-      (doseq [root roots]
-        (draw-tree forest nil root scale-fn))
+      (doseq [node (get-in state [:delta-state :rm-nodes])]
+        (clear-node node (:background-color state) scale-fn))
 
-      (doseq [ghost (:ghosts state)]
-        (doseq [active-node (map #(forest/get-node forest %)
-                                 (:active-node-ids ghost))]
-          (draw-node active-node true scale-fn)))
+      (doseq [node (get-in state [:delta-state :add-nodes])]
+        (draw-node node scale-fn))
 
       ))
-
-    ;(draw-dial state (:dial state) [30 30] [100 30])
-
-    ;(q/text (clojure.string/join
-    ;          "\n"
-    ;          (list
-    ;            (gstring/format "frame:%d" (:frame state))
-    ;            (gstring/format "second:%f" (curr-second state))
-    ;            (gstring/format "spawn-chance:%d" (spawn-chance state))))
-    ;        30 30)
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
